@@ -21,3 +21,6 @@ All notable changes to this plugin. The format follows
   probe, changelog matching, Rector and Fractor campaigns one rule per commit,
   ddev snapshots, upgrade report.
 - Verified by a test flight TYPO3 12.4.45 to 13.4.35.
+
+[Unreleased]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.1.0...HEAD
+[0.1.0]: https://github.com/sbuerk/claude-fly-the-upgrade/releases/tag/fly-the-upgrade--v0.1.0
