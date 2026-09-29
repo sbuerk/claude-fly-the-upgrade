@@ -75,7 +75,46 @@ def packagist_versions(name: str) -> list[dict]:
     return [v for v in expand_minified(data['packages'][name]) if not v['version'].startswith('dev-')]
 
 
-def version_facts(target: str) -> dict:
+# Packages that follow the core. "latest": move to the newest major that supports the
+# target (aligned with core LTS lines). "keep": only move when the current constraint
+# allows no release that supports the target.
+COMPANIONS = {
+    'typo3/testing-framework': {'policy': 'latest', 'what': 'test framework'},
+    'helhum/typo3-console': {'policy': 'keep', 'what': 'TYPO3 Console (database:updateschema and more)'},
+}
+
+
+def core_compatible(name: str, probes: list[str], php: str | None = None) -> list[str]:
+    """Stable versions whose typo3/cms-core requirement allows every probe, and the PHP version if given."""
+    out = []
+    for version in packagist_versions(name):
+        require = version.get('require', {})
+        if not require.get('typo3/cms-core') or not all(allows(require['typo3/cms-core'], probe) for probe in probes):
+            continue
+        if php and require.get('php') and not allows(require['php'], php):
+            continue
+        out.append(version['version'])
+    return sorted(out, key=vtuple)
+
+
+def companion_facts(target_probe: str, source_installed: str | None, php: str | None = None) -> dict:
+    """target_probe is a concrete core version, preferably the latest patch of the target line."""
+    facts = {}
+    for name in COMPANIONS:
+        compatible = core_compatible(name, [target_probe], php)
+        if not compatible:
+            continue
+        entry = {'latest_compatible': compatible[-1], 'constraint': f'^{vtuple(compatible[-1])[0]}',
+                 'compatible': compatible}
+        if source_installed:
+            bridge = core_compatible(name, [source_installed, target_probe], php)
+            if bridge:
+                entry['bridge'] = {'latest': bridge[-1], 'constraint': f'^{vtuple(bridge[-1])[0]}.{vtuple(bridge[-1])[1]}'}
+        facts[name] = entry
+    return facts
+
+
+def version_facts(target: str, source_installed: str | None = None, php: str | None = None) -> dict:
     major = target.split('.')[0]
     facts: dict = {'target': target, 'fetched': now()}
     info = fetch_json(GET_TYPO3.format(major=major))
@@ -86,23 +125,21 @@ def version_facts(target: str) -> dict:
         latest = max(core, key=lambda v: vtuple(v['version']))
         facts['core_latest'] = latest['version']
         facts['core_php'] = latest.get('require', {}).get('php')
-    frameworks = []
-    probe = f'{target}.0'
-    for version in packagist_versions('typo3/testing-framework'):
-        require = version.get('require', {}).get('typo3/cms-core')
-        if require and allows(require, probe):
-            frameworks.append(version['version'])
-    if frameworks:
-        best = max(frameworks, key=vtuple)
-        facts['testing_framework'] = {'latest_compatible': best, 'constraint': f'^{vtuple(best)[0]}'}
+    probe = (facts.get('core_latest') or f'{target}.0').lstrip('v')
+    facts['companions'] = companion_facts(probe, source_installed, php)
+    framework = facts['companions'].get('typo3/testing-framework')
+    if framework:
+        facts['testing_framework'] = {'latest_compatible': framework['latest_compatible'], 'constraint': framework['constraint']}
     return facts
 
 
 def cmd_versions(args) -> None:
     flight = Flight.load()
     target = args.target or flight.config['target']
-    facts = version_facts(target)
-    source_facts = version_facts(flight.config['source']) if not args.target else None
+    installed = flight.config.get('source_installed')
+    php = flight.config.get('platform', {}).get('php')
+    facts = version_facts(target, installed if target != flight.config['source'] else None, php)
+    source_facts = version_facts(flight.config['source'], php=php) if not args.target else None
     flight.config.setdefault('facts', {})[target] = facts
     if source_facts:
         flight.config['facts'][flight.config['source']] = source_facts
@@ -116,8 +153,11 @@ def cmd_versions(args) -> None:
         print(f'  latest {data.get("core_latest")}, core requires php {data.get("core_php")}')
         for req in data['requirements']:
             print(f'  {req["category"]}/{req["name"]}: {req.get("min", "")} .. {req.get("max", "")}')
-        if data.get('testing_framework'):
-            print(f'  typo3/testing-framework: {data["testing_framework"]["constraint"]} (latest compatible {data["testing_framework"]["latest_compatible"]})')
+        for name, companion in data.get('companions', {}).items():
+            line = f'  {name}: {companion["constraint"]} (latest compatible {companion["latest_compatible"]})'
+            if companion.get('bridge'):
+                line += f', supports {installed} and {label} too: {companion["bridge"]["constraint"]} (up to {companion["bridge"]["latest"]})'
+            print(line)
     platform = flight.config.get('platform', {})
     composer = load_json(flight.root / 'composer.json', {})
     pinned = composer.get('config', {}).get('platform', {}).get('php')
@@ -134,10 +174,22 @@ def bump_constraint(constraint: str, target: str) -> str:
     return f'^{target}' if constraint != '@dev' and not constraint.startswith('dev-') else constraint
 
 
-def planned_edits(flight: Flight, target: str) -> list[tuple[Path, str, str]]:
-    """(file, old text, new text) for composer.json files and ext_emconf.php of own extensions."""
-    edits = []
-    framework = flight.config.get('facts', {}).get(target, {}).get('testing_framework', {}).get('constraint')
+def companion_constraint(name: str, current: str, facts: dict) -> str | None:
+    """New constraint for a companion package, or None to keep the current one."""
+    companion = facts.get('companions', {}).get(name)
+    if not companion or current.startswith('dev-') or current in ('@dev', '*'):
+        return None
+    if COMPANIONS[name]['policy'] == 'latest':
+        return None if allows(current, companion['latest_compatible']) else companion['constraint']
+    if any(allows(current, version) for version in companion['compatible']):
+        return None
+    return companion['constraint']
+
+
+def planned_edits(flight: Flight, target: str) -> tuple[list[tuple[Path, str, str]], list[str]]:
+    """(file, old text, new text) for composer.json files and ext_emconf.php of own extensions, plus warnings."""
+    edits, warnings = [], []
+    facts = flight.config.get('facts', {}).get(target, {})
     files = [flight.root / 'composer.json'] + [flight.root / ext['path'] / 'composer.json' for ext in flight.extensions() if ext['path'] != '.']
     for path in files:
         if not path.is_file():
@@ -151,9 +203,17 @@ def planned_edits(flight: Flight, target: str) -> list[tuple[Path, str, str]]:
             bumped = bump_constraint(constraint, target)
             if bumped != constraint:
                 new = new.replace(match.group(0), match.group(0).replace(f'"{constraint}"', f'"{bumped}"'), 1)
-        tf = re.search(r'"typo3/testing-framework"\s*:\s*"([^"]+)"', new)
-        if tf and framework and not allows(tf.group(1), flight.config['facts'][target]['testing_framework']['latest_compatible']):
-            new = new.replace(tf.group(0), tf.group(0).replace(f'"{tf.group(1)}"', f'"{framework}"'))
+        for name in COMPANIONS:
+            match = re.search(rf'"{re.escape(name)}"\s*:\s*"([^"]+)"', new)
+            if not match:
+                continue
+            raised = companion_constraint(name, match.group(1), facts)
+            if raised:
+                new = new.replace(match.group(0), match.group(0).replace(f'"{match.group(1)}"', f'"{raised}"'))
+                before_eight = not any(allows(match.group(1), probe) for probe in ('8.0.0', '8.99.0', '9.0.0', '9.99.0'))
+                if name == 'helhum/typo3-console' and before_eight and vtuple(raised)[0] >= 8:
+                    warnings.append('TYPO3 Console moves to 8.0 or newer: the typo3cms binary is gone, its commands run '
+                                    'through vendor/bin/typo3. Update deployment scripts in the same change.')
         if new != text:
             edits.append((path, text, new))
     for ext in flight.extensions():
@@ -163,7 +223,7 @@ def planned_edits(flight: Flight, target: str) -> list[tuple[Path, str, str]]:
             new = re.sub(r"(['\"]typo3['\"]\s*=>\s*['\"])[\d.]+-[\d.]+(['\"])", rf'\g<1>{target}.0-{target}.99\g<2>', text)
             if new != text:
                 edits.append((emconf, text, new))
-    return edits
+    return edits, warnings
 
 
 def cmd_bump(args) -> None:
@@ -171,7 +231,9 @@ def cmd_bump(args) -> None:
     target = flight.config['target']
     if target not in flight.config.get('facts', {}):
         die('run upgrade-pilot versions first, the bump uses its testing-framework and PHP facts')
-    edits = planned_edits(flight, target)
+    edits, warnings = planned_edits(flight, target)
+    for warning in warnings:
+        print(f'WARNING: {warning}')
     if not edits:
         print('nothing to edit, constraints already on target')
     for path, old, new in edits:

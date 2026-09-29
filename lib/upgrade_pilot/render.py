@@ -7,6 +7,18 @@ from .core import DATA_DIR, Flight, load_json, short_class
 MARK = {'open': '[ ]', 'done': '[x]', 'no': '[-]', 'na': '[~]', 'handoff': '[?]'}
 
 
+def statements_cell(entry: dict) -> str:
+    passes = entry.get('passes')
+    if entry.get('statements') is None:
+        return f'not reported ({len(passes)} pass(es))' if passes else 'not reported'
+    text = str(entry['statements'])
+    if passes and len(passes) > 1:
+        text = ' + '.join(str(p) for p in passes)
+    if entry.get('remaining'):
+        text += f', {entry["remaining"]} still pending'
+    return text
+
+
 def measurements_table(log: dict, rows: list[dict] | None = None) -> list[str]:
     rows = log.get('measurements', []) if rows is None else rows
     if not rows:
@@ -84,6 +96,11 @@ def flight_log(flight: Flight) -> str:
         lines += ['### TCA migrations', '', '| Stage | TYPO3 | Messages | In own extensions |', '|---|---|---|---|']
         lines += [f'| {t["label"]} | {t["typo3"]} | {t["count"]} | {t["own"]} |' for t in log['tca']]
         lines.append('')
+    if log.get('schema_runs'):
+        lines += ['### Database schema', '', '| Stage | Action | Via | Types | Statements | Exit |', '|---|---|---|---|---|---|']
+        lines += [f'| {e["label"]} | {e["action"]} | {e["provider"]} | {e["types"]} | '
+                  f'{statements_cell(e)} | {e["exit"]} |' for e in log['schema_runs']]
+        lines.append('')
     for name, campaign in log.get('campaigns', {}).items():
         lines += [f'### Campaign `{name}` ({campaign["tool"]}, `{campaign["config"]}`)', '',
                   '| Rule | Status | Files | Commit | Notes |', '|---|---|---|---|---|']
@@ -130,6 +147,12 @@ def cmd_report(args) -> None:
     if log.get('tca'):
         lines += ['## TCA migrations over time', '']
         lines += [f'- {t["label"]} (TYPO3 {t["typo3"]}): {t["count"]} messages, {t["own"]} in own extensions' for t in log['tca']]
+        lines.append('')
+    if log.get('schema_runs'):
+        lines += ['## Database schema', '']
+        lines += [f'- {e["label"]}: {e["action"]} via {e["provider"]} ({e["types"]}), '
+                  f'{statements_cell(e)}, exit {e["exit"]}'
+                  for e in log['schema_runs']]
         lines.append('')
     for name, campaign in log.get('campaigns', {}).items():
         statuses = {}

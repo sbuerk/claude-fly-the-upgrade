@@ -201,6 +201,7 @@ def run(args) -> None:
                 'typo3-fractor': 'a9f/typo3-fractor',
                 'extension-scanner-cli': 'netresearch/extension-scanner-cli',
                 'testing-framework': 'typo3/testing-framework',
+                'typo3-console': 'helhum/typo3-console',
             }.items()
         },
     }
@@ -238,6 +239,6 @@ def run(args) -> None:
         print(f'    - {suite:<11} [{spec["where"]}] {spec["cmd"]}')
     if not flight.config['tests']:
         print('    - none detected. Configure tests before the baseline measurement.')
-    missing = [name for name, version in flight.config['installed_tools'].items() if not version and name != 'testing-framework']
+    missing = [name for name, version in flight.config['installed_tools'].items() if not version and name not in ('testing-framework', 'typo3-console')]
     if missing:
         print('  tooling not installed: ' + ', '.join(missing))

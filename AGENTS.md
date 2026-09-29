@@ -22,7 +22,8 @@ three gated phases (pre-flight, flight, post-flight). It consists of:
 
 CLI modules: `core` (state, runtime wrapper, git), `init` (detection),
 `checklist` (items, gates, status), `instruments` (measure, scan, tca),
-`contacts` (contact points vs tests), `platform` (versions, bump, snapshots),
+`contacts` (contact points vs tests), `platform` (versions, companion packages,
+bump, snapshots), `schema` (schema tooling detection, dry run, converging apply),
 `changelog` (fetch, match), `rules` (Rector/Fractor campaigns), `render`
 (flight log and report), `cli` (argument parsing).
 

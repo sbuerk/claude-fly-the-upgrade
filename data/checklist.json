@@ -73,6 +73,7 @@
             {"id": "pf.briefing", "owner": "shared", "title": "Briefing written: what changes, what to expect, who does what", "how": "BRIEFING.md drafted from the flight log"},
             {"id": "pf.qrh", "owner": "pilot", "title": "QRH: the failures you expect, each with its prepared answer", "how": "QRH.md"},
             {"id": "pf.mel", "owner": "shared", "title": "MEL: what you accept as broken, reason and rectification date each", "how": "MEL.md"},
+            {"id": "pf.schema-tooling", "owner": "shared", "title": "Schema update scriptable: a database compare with dry run for every environment (TYPO3 Console database:updateschema), or the manual steps written down", "how": "schema check, a human decides whether to add TYPO3 Console"},
             {"id": "pf.backup-restore", "owner": "shared", "title": "Backup and restore rehearsed, not assumed", "how": "snapshot take + snapshot restore on the local runtime, production is human"},
             {"id": "pf.rollback-criteria", "owner": "human", "title": "Rollback criteria written down before departure", "how": "ask"},
             {"id": "pf.window-people", "owner": "human", "title": "Window long enough for plan plus surprises, right people present", "how": "ask"}
@@ -116,7 +117,7 @@
             {"id": "fl.rector", "owner": "pilot", "title": "4 - Rector after the packages, reviewed hunk by hunk", "how": "rules campaign flight-rector"},
             {"id": "fl.fractor", "owner": "pilot", "title": "5 - Fractor after the packages: TypoScript, Fluid, YAML, XLIFF", "how": "rules campaign flight-fractor"},
             {"id": "fl.scan", "owner": "pilot", "title": "6 - Scan: Extension Scanner and TCA check with target rules", "how": "scan + tca"},
-            {"id": "fl.schema", "owner": "pilot", "title": "7 - Schema: extension setup and database compare, the point of no return", "how": "typo3 extension:setup / database:updateschema on the local runtime"},
+            {"id": "fl.schema", "owner": "pilot", "title": "7 - Schema: extension setup and database compare, the point of no return", "how": "schema plan, then schema apply (TYPO3 Console safe updates when installed, core extension:setup otherwise)"},
             {"id": "fl.wizards", "owner": "pilot", "title": "8 - Wizards: list, run, then verify what each one did", "how": "typo3 upgrade:list / upgrade:run on the local runtime"},
             {"id": "fl.caches", "owner": "pilot", "title": "9 - Caches: flush, warm, then look at the site", "how": "typo3 cache:flush + a frontend request"}
           ]
@@ -180,6 +181,7 @@
         {
           "title": "Remove the ferry equipment",
           "items": [
+            {"id": "pst.schema-destructive", "owner": "shared", "title": "Destructive schema changes (drops, renames) listed and scheduled after the rollback window", "how": "schema plan --destructive (TYPO3 Console), or Analyze Database Structure"},
             {"id": "pst.shims", "owner": "pilot", "title": "Shims and polyfills added for the migration removed", "how": "diff review"},
             {"id": "pst.upgrade-packages", "owner": "shared", "title": "Upgrade-only packages removed or moved to an isolated tools install", "how": "decision recorded"},
             {"id": "pst.markers", "owner": "pilot", "title": "Resolved TODO markers deleted", "how": "grep for markers added during the flight"},

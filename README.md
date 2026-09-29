@@ -10,9 +10,9 @@ the measurable work, records every step, and stops where a human has to decide.
 
 | Phase | What the pilot does | Ends with |
 |---|---|---|
-| **1 Pre-flight** | Inventory, version facts, bump probe, changelog triage, **tests for untested core contact points**, baseline, deprecations cleared on the *current* version with Rector and Fractor **one rule per commit**, Extension Scanner, TCA migration check, QRH / MEL / briefing, backup rehearsal | Go / No-Go |
-| **2 Flight** | Branch, platform check, core and tooling raised in one composer transaction, Rector and Fractor for the *target* one rule per commit, scan again, red tests worked one at a time, schema, upgrade wizards verified on data, caches | Cleared to hand over |
-| **3 Post-flight** | Sweep again with the new core's rules, local deprecation-log crawl, ferry equipment removed, constraints re-pinned, upgrade report and debrief | Debriefed |
+| **1 Pre-flight** | Inventory, version facts, bump probe, changelog triage, **tests for untested core contact points**, baseline, deprecations cleared on the *current* version with Rector and Fractor **one rule per commit**, Extension Scanner, TCA migration check, **schema tooling decision (TYPO3 Console)**, QRH / MEL / briefing, backup rehearsal | Go / No-Go |
+| **2 Flight** | Branch, platform check, core and tooling raised in one composer transaction, Rector and Fractor for the *target* one rule per commit, scan again, red tests worked one at a time, **schema previewed and applied until it converges**, upgrade wizards verified on data, caches | Cleared to hand over |
+| **3 Post-flight** | Sweep again with the new core's rules, local deprecation-log crawl, destructive schema changes listed for after the rollback window, ferry equipment removed, constraints re-pinned, upgrade report and debrief | Debriefed |
 
 Every checklist answer, measurement, scan and refactoring rule lands in a flight
 log inside the project. Nothing is estimated.
@@ -26,6 +26,7 @@ log inside the project. Nothing is estimated.
 - [Prepare the project](#prepare-the-project)
 - [Upgrade a project, step by step](#upgrade-a-project-step-by-step)
 - [What you get: the flight log](#what-you-get-the-flight-log)
+- [Database schema and TYPO3 Console](#database-schema-and-typo3-console)
 - [Using parts of the plugin on their own](#using-parts-of-the-plugin-on-their-own)
 - [Configuration](#configuration)
 - [The upgrade-pilot CLI](#the-upgrade-pilot-cli)
@@ -123,6 +124,11 @@ in place before you start:
 
    With ddev, prefix composer with `ddev`. The pilot creates `rector.php` and
    `fractor.php` for your own extensions if they do not exist.
+
+   Optional but recommended: [TYPO3 Console](https://github.com/TYPO3-Console/TYPO3-Console)
+   (`helhum/typo3-console`) as a regular dependency, for a schema update with a
+   dry run. The pre-flight asks you about it and suggests a version, see
+   [Database schema and TYPO3 Console](#database-schema-and-typo3-console).
 4. **Have a working local instance** (installed, database set up). The TCA
    migration check, the schema step, the upgrade wizards and the frontend checks
    run against it.
@@ -170,6 +176,7 @@ the pre-flight checklist:
   commit**: apply, review, measure, commit, plan again
 - remaining deprecations fixed by hand, only with API the current version has
 - Extension Scanner and TCA migration check before and after
+- the schema tooling: TYPO3 Console detected, or offered to you (your decision)
 - `QRH.md` (expected failures and answers), `MEL.md` (accepted open items with
   reason and date), `BRIEFING.md`, a local backup and restore rehearsal
 
@@ -182,13 +189,15 @@ deployed before the upgrade.
 
 Claude creates `upgrade/<target>` from the pre-flight branch and follows the
 fixed sequence: platform check, then all `typo3/cms-*` constraints, your own
-extensions' constraints and the testing framework raised together and
-`composer update -W`, one commit. It measures straight after the bump (that
+extensions' constraints, the testing framework and, if needed, TYPO3 Console
+raised together and `composer update -W`, one commit. It measures straight after the bump (that
 result is the real worklist), then runs the Rector and Fractor campaigns against
 the *target* level set, scans again, and works the red tests one at a time.
 Generated code, such as upgrade wizards that Rector scaffolds with a `TODO`, is
 completed and verified, never committed blind. Schema, wizards and caches run
-on the local instance, and the wizards are checked against real rows.
+on the local instance. With TYPO3 Console the schema statements are previewed
+first and applied until the dry run is empty, and the wizards are checked
+against real rows.
 
 **Gate: Cleared to hand over.** All suites green, without skipped or weakened
 tests. Smoke tests by people, staging and editor testing are listed as your
@@ -197,7 +206,8 @@ tasks.
 ### 4. Post-flight
 
 Scanner and TCA check again with the new core's rules, a local deprecation-log
-crawl, upgrade-only leftovers removed, constraints re-pinned, next upgrade dated
+crawl, the destructive schema changes (drops, renames) listed on the MEL for
+after the rollback window, upgrade-only leftovers removed, constraints re-pinned, next upgrade dated
 from the support calendar, then `UPGRADE-REPORT.md` with the debrief.
 
 **Gate: Debriefed.** The flight is closed.
@@ -239,6 +249,39 @@ switches.
 Checklist answers use five states: done, **no** (answered no, with a reason: an
 accepted risk), not applicable, **handoff** (a person has to do or confirm it),
 open.
+
+## Database schema and TYPO3 Console
+
+The core's only command-line schema step is `extension:setup`: it applies the
+safe changes (create and alter, never drop or rename) and has **no dry run**.
+`database:updateschema` is not a core command, it comes from
+[TYPO3 Console](https://github.com/TYPO3-Console/TYPO3-Console): through the
+core's `typo3` binary since Console 8.0, through its own `typo3cms` binary
+before.
+
+`upgrade-pilot schema` detects which one the project has. It reads
+`helhum/typo3-console` from `composer.lock` and confirms in the runtime which
+binary really offers `database:updateschema`.
+
+| | With TYPO3 Console | Core only |
+|---|---|---|
+| `schema check` | Reports the Console version and binary | Explains the gap and suggests a Console constraint that supports your current **and** your target version (from Packagist, filtered by your PHP version) |
+| `schema plan` | Dry run: the exact SQL statements (`--destructive` for drops and renames) | Refuses, points to *Analyze Database Structure* in the backend |
+| `schema apply` | Safe types only, plan and apply repeated until the dry run is empty (at most 3 passes), fails when it does not converge | `extension:setup`, run twice, result not verifiable |
+
+Why passes: a major step does not always converge in one run. On the workshop
+project 12.4 → 13.4 needed two, 181 and then 266 statements, with Console and
+with `extension:setup` alike. A deployment that runs the update once leaves the
+database half migrated without anybody noticing, a dry run after the update
+shows it.
+
+Destructive types are refused unless `--allow-destructive` is passed, which the
+skills only do on a recorded human decision after the rollback window.
+
+Adding TYPO3 Console is a production dependency and therefore **your decision**:
+the pre-flight asks, suggests the constraint, and records a "no" with its reason.
+When the bump raises Console across 8.0, the pilot warns that deployment scripts
+calling `typo3cms` must switch to `typo3`.
 
 ## Using parts of the plugin on their own
 
@@ -298,8 +341,9 @@ plugin is enabled). You can use it directly as well:
 | `scan --label` | Extension Scanner over own extensions, diffed against the last scan |
 | `tca --label` | Headless *Check TCA Migrations* (the core has no CLI for it) |
 | `contacts` | Core contact points and which ones the tests execute |
-| `versions [--target]` | Support dates, PHP range, compatible testing framework |
-| `bump show\|probe\|apply` | Raise core constraints. `probe` dry-runs composer and restores the files |
+| `versions [--target]` | Support dates, PHP range, compatible testing framework and TYPO3 Console |
+| `bump show\|probe\|apply` | Raise core constraints and companion packages (testing framework, TYPO3 Console). `probe` dry-runs composer and restores the files |
+| `schema check\|plan\|apply` | Detect schema tooling, dry run, apply safe changes until converged |
 | `changelog fetch\|match` | Fetch the target's core changelog, match it against own code |
 | `rules config\|plan\|next\|apply\|commit\|skip\|list` | Rector and Fractor campaigns, one rule at a time |
 | `snapshot take\|restore\|list` | Local database snapshots (ddev) |
@@ -322,6 +366,7 @@ plugin is enabled). You can use it directly as well:
 - Commit messages follow your project's rules (its `CLAUDE.md`, `AGENTS.md`,
   contribution guide or your instructions). Without any, the TYPO3 Core format
   is used.
+- Destructive schema changes are never applied by the pilot on its own.
 - Local database changes (schema, wizards, rehearsal records) only touch the
   local instance. Take a snapshot before and restore it if you want the old
   state back.
@@ -354,6 +399,12 @@ Flown end to end on the *Fly the Upgrade* workshop project, TYPO3 12.4.45 to
 Extension Scanner 13 → 8 findings on 12.4 and 11 → 9 on 13.4 (the rest is dead
 code on the MEL), TCA migration messages 9 → 0 on 12.4 and 1 → 0 on 13.4, the
 Rector-generated upgrade wizard completed and verified on a legacy content row.
+
+The TYPO3 Console support (0.2.0) was verified on the same project on a
+throwaway branch: Console `^9.0` suggested as the bridge between 12.4.45 and
+13.4, added on 12.4, kept by the bump, 0 pending statements on 12.4, 181 + 266
+safe statements applied on 13.4 until converged, 19 destructive renames listed
+for post-flight.
 
 ## What is in this repository
 

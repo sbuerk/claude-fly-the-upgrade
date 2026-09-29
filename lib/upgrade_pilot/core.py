@@ -113,6 +113,18 @@ class Flight:
         self.dir = root / STATE_DIR
         self.config = load_json(self.dir / 'config.json', {})
         self.log = load_json(self.dir / 'flightlog.json', {})
+        self._add_new_checklist_items()
+
+    def _add_new_checklist_items(self) -> None:
+        """Flights opened with an older plugin version get lines added later as open items."""
+        checklist = self.log.get('checklist')
+        if checklist is None:
+            return
+        spec = load_json(DATA_DIR / 'checklist.json', {})
+        for phase in spec.get('phases', {}).values():
+            for section in phase['sections']:
+                for item in section['items']:
+                    checklist.setdefault(item['id'], {'status': 'open', 'note': '', 'evidence': '', 'at': None})
 
     @classmethod
     def load(cls, start: str | None = None) -> 'Flight':

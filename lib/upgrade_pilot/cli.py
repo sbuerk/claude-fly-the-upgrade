@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from . import changelog, checklist, contacts, init, instruments, platform, render, rules
+from . import changelog, checklist, contacts, init, instruments, platform, render, rules, schema
 
 
 def build() -> argparse.ArgumentParser:
@@ -77,6 +77,15 @@ def build() -> argparse.ArgumentParser:
     p = sub.add_parser('bump', help='raise core constraints: show, probe (dry-run resolve, then restore) or apply')
     p.add_argument('mode', choices=['show', 'probe', 'apply'])
     p.set_defaults(func=platform.cmd_bump)
+
+    p = sub.add_parser('schema', help='database schema: detect tooling, dry run, apply (TYPO3 Console or core)')
+    p.add_argument('action', choices=['check', 'plan', 'apply'])
+    p.add_argument('--label', help='stage label for the flight log')
+    p.add_argument('--types', help='TYPO3 Console update types, default "safe" (e.g. "*.add,*.change", "destructive")')
+    p.add_argument('--destructive', action='store_true', help='plan: list drops and renames (types "destructive")')
+    p.add_argument('--allow-destructive', action='store_true', help='apply: permit drops and renames, only on a recorded human decision')
+    p.add_argument('--passes', type=int, default=None, help='apply: maximum passes (TYPO3 Console default 3, core default 2)')
+    p.set_defaults(func=schema.cmd_schema)
 
     p = sub.add_parser('snapshot', help='local database snapshot (ddev)')
     p.add_argument('action', choices=['take', 'restore', 'list'])
