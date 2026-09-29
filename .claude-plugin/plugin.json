@@ -7,6 +7,15 @@
     "name": "Stefan Bürk",
     "email": "stefan@buerk.tech"
   },
+  "homepage": "https://github.com/sbuerk/claude-fly-the-upgrade",
+  "repository": "https://github.com/sbuerk/claude-fly-the-upgrade",
   "license": "GPL-2.0-or-later",
-  "keywords": ["typo3", "upgrade", "rector", "fractor", "extension-scanner", "migration"]
+  "keywords": [
+    "typo3",
+    "upgrade",
+    "rector",
+    "fractor",
+    "extension-scanner",
+    "migration"
+  ]
 }
