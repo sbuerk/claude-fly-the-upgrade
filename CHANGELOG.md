@@ -6,6 +6,34 @@ All notable changes to this plugin. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-29
+
+### Added
+
+- `upgrade-pilot schema check|plan|apply`: detects TYPO3 Console
+  (`helhum/typo3-console`) from the lock file and confirms in the runtime which
+  binary offers `database:updateschema` (`typo3`, or `typo3cms` before Console
+  8.0). With Console: dry run of the exact statements and a safe apply that
+  repeats until the dry run is empty. Without it: `extension:setup`, run twice.
+  Destructive update types need `--allow-destructive`.
+- Checklist lines `pf.schema-tooling` (pre-flight: Console present, or offered
+  to the team with a version that supports source and target) and
+  `pst.schema-destructive` (post-flight: drops and renames listed for after the
+  rollback window). Existing flights receive new checklist lines as open items.
+- `versions` reports compatible TYPO3 Console releases, filtered by the
+  runtime PHP version, including a constraint that bridges source and target.
+
+### Changed
+
+- `bump` handles companion packages generically: the testing framework moves to
+  the newest compatible major as before, TYPO3 Console only when its constraint
+  allows no release for the target, with a warning when that crosses Console
+  8.0 (the `typo3cms` binary is gone).
+- Compatibility of companion packages is probed against the latest patch of a
+  core line instead of `x.y.0`.
+- The flight skill applies the schema through `upgrade-pilot schema` and requires
+  a converged dry run, the post-flight skill lists destructive changes.
+
 ## [0.1.0] - 2026-09-29
 
 ### Added
@@ -22,5 +50,6 @@ All notable changes to this plugin. The format follows
   ddev snapshots, upgrade report.
 - Verified by a test flight TYPO3 12.4.45 to 13.4.35.
 
-[Unreleased]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.1.0...HEAD
+[Unreleased]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.2.0...HEAD
+[0.2.0]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.1.0...fly-the-upgrade--v0.2.0
 [0.1.0]: https://github.com/sbuerk/claude-fly-the-upgrade/releases/tag/fly-the-upgrade--v0.1.0

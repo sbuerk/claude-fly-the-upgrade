@@ -1,7 +1,7 @@
 {
   "name": "fly-the-upgrade",
   "displayName": "Fly the Upgrade",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Fly a TYPO3 major upgrade in three phases (pre-flight, flight, post-flight) with a tracked flight log, gates, instrument tests for core contact points and Rector/Fractor applied one rule per commit.",
   "author": {
     "name": "Stefan Bürk",
