@@ -1,0 +1,14 @@
+{
+  "name": "fly-the-upgrade",
+  "description": "TYPO3 upgrade pilot for Claude Code",
+  "owner": {
+    "name": "Stefan Bürk"
+  },
+  "plugins": [
+    {
+      "name": "fly-the-upgrade",
+      "source": "./",
+      "description": "Three-phase TYPO3 upgrade with flight log, gates, instrument tests and per-rule Rector/Fractor."
+    }
+  ]
+}

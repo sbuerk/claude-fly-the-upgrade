@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""upgrade-pilot: flight log, instruments and per-rule campaigns for TYPO3 upgrades."""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'lib'))
+
+from upgrade_pilot.cli import main  # noqa: E402
+
+if __name__ == '__main__':
+    main()
