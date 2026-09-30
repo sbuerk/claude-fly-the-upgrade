@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from . import changelog, checklist, contacts, init, instruments, platform, render, rules, schema
+from . import changelog, checklist, contacts, deps, init, instruments, platform, render, rules, schema
 
 
 def build() -> argparse.ArgumentParser:
@@ -77,6 +77,18 @@ def build() -> argparse.ArgumentParser:
     p = sub.add_parser('bump', help='raise core constraints: show, probe (dry-run resolve, then restore) or apply')
     p.add_argument('mode', choices=['show', 'probe', 'apply'])
     p.set_defaults(func=platform.cmd_bump)
+
+    p = sub.add_parser('deps', help='third-party packages that move, and their changelogs, upgrade notes and wizards')
+    dsub = p.add_subparsers(dest='deps_command', required=True)
+    c = dsub.add_parser('list', help='which third-party packages move: from the last bump probe, or between a git ref and now')
+    c.add_argument('--from-lock', metavar='REF', help='compare composer.lock at this git ref with the working tree (after the bump)')
+    c.set_defaults(func=deps.cmd_list)
+    c = dsub.add_parser('docs', help='read changelogs, upgrade notes, breaking commits and new wizards of the moving packages')
+    c.add_argument('--package', action='append', help='only this package (repeatable)')
+    c.add_argument('--all', action='store_true', help='every moving package, not only extensions, majors and new ones')
+    c.add_argument('--from', dest='from_version', help='with one --package: inspect this range without a deps list')
+    c.add_argument('--to', dest='to_version')
+    c.set_defaults(func=deps.cmd_docs)
 
     p = sub.add_parser('schema', help='database schema: detect tooling, dry run, apply (TYPO3 Console or core)')
     p.add_argument('action', choices=['check', 'plan', 'apply'])

@@ -96,6 +96,13 @@ def flight_log(flight: Flight) -> str:
         lines += ['### TCA migrations', '', '| Stage | TYPO3 | Messages | In own extensions |', '|---|---|---|---|']
         lines += [f'| {t["label"]} | {t["typo3"]} | {t["count"]} | {t["own"]} |' for t in log['tca']]
         lines.append('')
+    deps_log = log.get('dependencies') or {}
+    if deps_log.get('docs'):
+        lines += ['### Third-party dependencies', '', f'Moves from {deps_log.get("origin")}: {len(deps_log.get("moves", []))} package(s).', '',
+                  '| Package | From | To | Documented | New wizards | Report |', '|---|---|---|---|---|---|']
+        lines += [f'| {name} | {d["from"] or "(new)"} | {d["to"]} | {d["summary"]} | {", ".join(d["wizards_new"]) or "-"} | {d["report"]} |'
+                  for name, d in sorted(deps_log['docs'].items())]
+        lines.append('')
     if log.get('schema_runs'):
         lines += ['### Database schema', '', '| Stage | Action | Via | Types | Statements | Exit |', '|---|---|---|---|---|---|']
         lines += [f'| {e["label"]} | {e["action"]} | {e["provider"]} | {e["types"]} | '
@@ -147,6 +154,11 @@ def cmd_report(args) -> None:
     if log.get('tca'):
         lines += ['## TCA migrations over time', '']
         lines += [f'- {t["label"]} (TYPO3 {t["typo3"]}): {t["count"]} messages, {t["own"]} in own extensions' for t in log['tca']]
+        lines.append('')
+    deps_log = log.get('dependencies') or {}
+    if deps_log.get('docs'):
+        lines += ['## Third-party dependencies', '']
+        lines += [f'- {name} {d["from"] or "(new)"} -> {d["to"]}: {d["summary"]} ({d["report"]})' for name, d in sorted(deps_log['docs'].items())]
         lines.append('')
     if log.get('schema_runs'):
         lines += ['## Database schema', '']

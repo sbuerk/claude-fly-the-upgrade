@@ -10,7 +10,7 @@ the measurable work, records every step, and stops where a human has to decide.
 
 | Phase | What the pilot does | Ends with |
 |---|---|---|
-| **1 Pre-flight** | Inventory, version facts, bump probe, changelog triage, **tests for untested core contact points**, baseline, deprecations cleared on the *current* version with Rector and Fractor **one rule per commit**, Extension Scanner, TCA migration check, **schema tooling decision (TYPO3 Console)**, QRH / MEL / briefing, backup rehearsal | Go / No-Go |
+| **1 Pre-flight** | Inventory, version facts, bump probe, changelog triage of the core **and of every third-party package that moves**, **tests for untested core contact points**, baseline, deprecations cleared on the *current* version with Rector and Fractor **one rule per commit**, Extension Scanner, TCA migration check, **schema tooling decision (TYPO3 Console)**, QRH / MEL / briefing, backup rehearsal | Go / No-Go |
 | **2 Flight** | Branch, platform check, core and tooling raised in one composer transaction, Rector and Fractor for the *target* one rule per commit, scan again, red tests worked one at a time, **schema previewed and applied until it converges**, upgrade wizards verified on data, caches | Cleared to hand over |
 | **3 Post-flight** | Sweep again with the new core's rules, local deprecation-log crawl, destructive schema changes listed for after the rollback window, ferry equipment removed, constraints re-pinned, upgrade report and debrief | Debriefed |
 
@@ -26,6 +26,7 @@ log inside the project. Nothing is estimated.
 - [Prepare the project](#prepare-the-project)
 - [Upgrade a project, step by step](#upgrade-a-project-step-by-step)
 - [What you get: the flight log](#what-you-get-the-flight-log)
+- [Third-party changelogs and upgrade notes](#third-party-changelogs-and-upgrade-notes)
 - [Database schema and TYPO3 Console](#database-schema-and-typo3-console)
 - [Using parts of the plugin on their own](#using-parts-of-the-plugin-on-their-own)
 - [Configuration](#configuration)
@@ -167,6 +168,8 @@ the pre-flight checklist:
 - a **bump probe**: constraints raised, `composer update -W --dry-run`, files
   restored. Every "Problem N" is a blocker to solve before departure
 - the core changelog of the target, matched against your code
+- the changelogs, upgrade guides, release notes and new upgrade wizards of every
+  third-party package the bump moves (see below)
 - **instruments**: core contact points of your extensions (plugins, controllers,
   services using core API, hooks, listeners, middlewares, commands, TCA,
   TypoScript) and which of them any test executes. Claude writes the missing
@@ -249,6 +252,56 @@ switches.
 Checklist answers use five states: done, **no** (answered no, with a reason: an
 accepted risk), not applicable, **handoff** (a person has to do or confirm it),
 open.
+
+## Third-party changelogs and upgrade notes
+
+The core is not the only thing that moves. A major bump also moves
+extensions and libraries, and many of them document their changes as
+carefully as the core does. `upgrade-pilot deps` finds and reads those notes,
+by convention only, for any package.
+
+**Which packages.** `deps list` takes them from the bump probe in the
+pre-flight, or from the old and the new `composer.lock` after the bump
+(`--from-lock <pre-flight branch>`), leaving out core packages and your own
+extensions. `deps docs` reads by default:
+
+- every TYPO3 extension that moves
+- direct requirements (root or own-extension `composer.json`) that jump a
+  major or are new
+- packages your code actually uses (their PSR-4 namespaces appear in your
+  extensions)
+
+Anything else on request with `--package <name>` or `--all`.
+
+**Where it reads.** From the package's source repository at the **target
+release** and at the installed release, through the source URL composer knows.
+Private repositories therefore work with the project's own credentials.
+Notes that exist only on a branch do not count, they do not describe what you
+install. Without a git source, the installed copy in `vendor/` is used.
+
+**What it looks for, in any package:**
+
+| Convention | Example |
+|---|---|
+| TYPO3-style changelog | `Documentation/Changelog/<version>/Breaking-*.rst` (also Deprecation, Feature, Important, Bugfix) |
+| Note files | `CHANGELOG`, `CHANGES`, `UPGRADE`, `UPGRADING`, `MIGRATION`, `NEWS`, `RELEASE-NOTES` as `.md`, `.rst` or `.txt` |
+| Upgrade guides | `Documentation/**/UpgradeFrom5To6.rst`, `docs/**/migration*.md` |
+| Hosting release notes | GitHub releases (through `gh` when available), GitLab-style `/api/v4` releases |
+| Breaking commits | subjects with `[!!!]`, `BREAKING` or `type!:` between the two releases |
+| Upgrade wizards | `#[UpgradeWizard('…')]` classes that are new in the target release |
+
+What is new is decided by comparing the two releases: changelog files that
+only exist in the target, note sections that are new or changed. When the
+installed release cannot be read, version headings decide instead.
+
+Per package you get `.upgrade-pilot/deps/<package>-<from>-<to>.md` with the
+full text of every relevant entry, hits of their code literals in your
+extensions, and the new wizards. The pre-flight turns breaking entries and
+wizards into QRH rows, the flight re-reads the notes for the versions really
+installed and expects the wizards in step 8.
+
+"Nothing documented found" is reported as such: the maintainer's project
+page then becomes a task for a person.
 
 ## Database schema and TYPO3 Console
 
@@ -343,6 +396,7 @@ plugin is enabled). You can use it directly as well:
 | `contacts` | Core contact points and which ones the tests execute |
 | `versions [--target]` | Support dates, PHP range, compatible testing framework and TYPO3 Console |
 | `bump show\|probe\|apply` | Raise core constraints and companion packages (testing framework, TYPO3 Console). `probe` dry-runs composer and restores the files |
+| `deps list [--from-lock <ref>]` / `deps docs [--package] [--all]` | Third-party packages that move, and their changelogs, upgrade notes, release notes, breaking commits and new wizards |
 | `schema check\|plan\|apply` | Detect schema tooling, dry run, apply safe changes until converged |
 | `changelog fetch\|match` | Fetch the target's core changelog, match it against own code |
 | `rules config\|plan\|next\|apply\|commit\|skip\|list` | Rector and Fractor campaigns, one rule at a time |
@@ -399,6 +453,12 @@ Flown end to end on the *Fly the Upgrade* workshop project, TYPO3 12.4.45 to
 Extension Scanner 13 → 8 findings on 12.4 and 11 → 9 on 13.4 (the rest is dead
 code on the MEL), TCA migration messages 9 → 0 on 12.4 and 1 → 0 on 13.4, the
 Rector-generated upgrade wizard completed and verified on a legacy content row.
+
+The third-party notes were verified on real packages: `web-vision/deepltranslate-core`
+5.1.10 → 6.0.7 (TYPO3-style changelog, UPGRADE.md, upgrade guide, `[!!!]` commits),
+`fgtclb/academic-persons` 1.2.0 → 2.3.4 (split repository of a monorepo, 4 Breaking
+entries, a new CType migration wizard), `ssch/typo3-rector` 2.15 → 3.16 (GitHub
+release notes only) and `typo3/testing-framework` 8 → 9 (breaking commits only).
 
 The TYPO3 Console support (0.2.0) was verified on the same project on a
 throwaway branch: Console `^9.0` suggested as the bridge between 12.4.45 and

@@ -71,7 +71,11 @@ def in_range(name: str, source: str, target: str, include_source_major: bool) ->
 
 
 def parse_entry(path: Path) -> dict:
-    text = path.read_text(encoding='utf-8', errors='replace')
+    return parse_entry_text(path.name, path.read_text(encoding='utf-8', errors='replace'))
+
+
+def parse_entry_text(name: str, text: str) -> dict:
+    """One TYPO3-style changelog rst: type from the file name, title, :php: and :typoscript: literals."""
     lines = text.splitlines()
     title = ''
     for index, line in enumerate(lines[:-1]):
@@ -82,7 +86,7 @@ def parse_entry(path: Path) -> dict:
     for literal in re.findall(r':php:`([^`]+)`', text):
         php.add(literal.strip())
     typoscript = {t.strip() for t in re.findall(r':typoscript:`([^`]+)`', text)}
-    return {'file': path.name, 'type': path.name.split('-')[0], 'title': title, 'php': sorted(php), 'typoscript': sorted(typoscript)}
+    return {'file': name, 'type': name.split('-')[0], 'title': title, 'php': sorted(php), 'typoscript': sorted(typoscript)}
 
 
 PHP_BUILTIN = re.compile(r'^(E_[A-Z_]+|PHP_[A-Z_]+|DIRECTORY_SEPARATOR|PATH_SEPARATOR|JSON_[A-Z_]+|LC_[A-Z]+)$')

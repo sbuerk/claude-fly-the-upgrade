@@ -45,6 +45,7 @@
             {"id": "pf.target-version", "owner": "shared", "title": "Target version decided, dated and justified against the support calendar", "how": "versions shows support dates from get.typo3.org"},
             {"id": "pf.changelogs", "owner": "shared", "title": "Changelogs read and triaged: Breaking, Deprecation, Feature, Important", "how": "changelog fetch + changelog match"},
             {"id": "pf.breaking-worklist", "owner": "pilot", "title": "Breaking changes that touch your code extracted into a work list", "how": "changelog match output goes into QRH.md"},
+            {"id": "pf.dependency-docs", "owner": "pilot", "title": "Changelogs, upgrade guides and release notes of every third-party package that moves read, breaking entries and new upgrade wizards in the QRH", "how": "deps list after bump probe, then deps docs"},
             {"id": "pf.php-baseline", "owner": "shared", "title": "PHP baseline supported by both source and target, live in production before departure", "how": "versions shows the PHP overlap, a human confirms production"}
           ]
         },
@@ -127,6 +128,7 @@
           "items": [
             {"id": "fl.one-at-a-time", "owner": "pilot", "title": "Red tests worked one at a time, in order", "how": "measure after each fix"},
             {"id": "fl.generated-code", "owner": "pilot", "title": "Generated code read before it is trusted", "how": "rules apply flags new files and TODO markers"},
+            {"id": "fl.dependency-migrations", "owner": "pilot", "title": "Migration steps of the dependencies done: their breaking entries handled, their upgrade wizards run in step 8", "how": "deps list --from-lock <pre-flight branch>, then deps docs"},
             {"id": "fl.third-party-gaps", "owner": "shared", "title": "Third-party gaps closed by update, patch, fork or replacement", "how": "composer resolution + scan --all"},
             {"id": "fl.overrides", "owner": "shared", "title": "Fluid template and FlexForm overrides re-based onto the new originals", "how": "contacts lists overridden template paths"},
             {"id": "fl.new-deprecations", "owner": "pilot", "title": "Target-version deprecations cleaned as they appear", "how": "measure with failOnDeprecation"},

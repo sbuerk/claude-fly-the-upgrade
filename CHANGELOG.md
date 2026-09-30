@@ -6,6 +6,22 @@ All notable changes to this plugin. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `upgrade-pilot deps list|docs`: third-party packages that move with the bump
+  (from the bump probe, or from the old and new composer.lock), and what their
+  maintainers documented between the installed and the target release. Found by
+  convention for any package: TYPO3-style `Documentation/Changelog/<version>/`
+  entries, CHANGELOG / UPGRADE / MIGRATION / NEWS files, upgrade guides, GitHub
+  and GitLab release notes, `[!!!]` or breaking commits, and upgrade wizards new
+  in the target release. Sources come through composer, so private repositories
+  work with the project's credentials. Per-package reports with the full text
+  and hits in own code.
+- Checklist lines `pf.dependency-docs` and `fl.dependency-migrations`. The
+  pre-flight turns dependency breaking entries and wizards into QRH rows, the
+  flight re-reads them for the versions really installed and expects their
+  wizards in step 8.
+
 ## [0.2.0] - 2026-09-29
 
 ### Added

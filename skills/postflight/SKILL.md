@@ -35,6 +35,7 @@ Green again is the end of the flight, not of the work. Everything found here is 
 ## Record it while you still remember
 
 - `upgrade-pilot versions` for the next target: support end of the new version gives the date of the next flight (`pst.maintenance`).
+- Deprecation entries in the dependency reports (`.upgrade-pilot/deps/`) are the next upgrade's work list, like the core's: record them in the report.
 - `upgrade-pilot changelog match` lists `Feature` entries touching own code: `pst.features` is a human triage, `handoff` with the list.
 - `upgrade-pilot report` writes `.upgrade-pilot/UPGRADE-REPORT.md` from the flight log: measurements stage by stage, scanner and TCA trend, rule campaigns with generated code and skipped rules, commits of both branches, gates, open handoffs, accepted risks. The debrief is yours to write, in `.upgrade-pilot/DEBRIEF.md` (the report embeds it, re-rendering never overwrites it): what the QRH predicted versus what happened, what took longest, what only the tests caught, and the lines to add to the checklist. Then run `upgrade-pilot report` again (`pst.report`, `pst.checklist`).
 - `pst.docs`: update the project's own upgrade notes or README if they mention versions or commands that changed.

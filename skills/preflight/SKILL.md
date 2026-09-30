@@ -20,6 +20,11 @@ Clean working tree on the base branch, then `git switch -c <preflight branch fro
 - `pf.platform`: PHP and database from `config.json -> platform`. Web server and image processing are `handoff` unless visible in the runtime config.
 - `pf.own-extensions`: from `config.json -> extensions`. Owners are `handoff` unless the user named them.
 - `pf.third-party`: `upgrade-pilot versions`, then `upgrade-pilot bump probe`. The probe edits constraints, runs `composer update -W --dry-run`, and restores the files. Every "Problem N" it prints is a package that cannot follow yet: find out if a compatible release, fork or replacement exists and write it into `QRH.md`. `pf.unowned` is a human decision.
+- `pf.dependency-docs`: right after the probe, `upgrade-pilot deps list` shows every third-party package the target graph moves (core packages and own extensions excluded), then `upgrade-pilot deps docs` reads, for the default selection (all TYPO3 extensions, direct requirements with a major step or new, packages own code uses), what their maintainers documented between the installed and the target release:
+  - TYPO3-style `Documentation/Changelog/<version>/<Type>-*.rst` entries, CHANGELOG / UPGRADE / MIGRATION / NEWS files, upgrade guides in the documentation, release notes on GitHub or GitLab, commits marked `[!!!]` or as breaking, and upgrade wizards that are new in the target release.
+  - It reads the target *release* from the package's source repository (through composer, so private repositories work with the project's credentials) and compares it with the installed release. Unreleased notes on a branch do not count.
+  - Read every report under `.upgrade-pilot/deps/`. Each Breaking or Important entry that touches the project (own code hits are listed, but also configuration, TypoScript, templates, site settings) becomes a QRH row with the package name. Every new upgrade wizard becomes a QRH row for flight step 8. An abandoned package goes to `pf.unowned`.
+  - "Nothing documented found" is a finding, not a pass: the maintainer's project page is then a `handoff`. Add packages outside the default selection with `--package <name>` or `--all` when a transitive update worries you.
 - `pf.your-changes`: from `upgrade-pilot contacts` (step 3): XCLASS, hooks and `template-override` entries. List them in `BRIEFING.md`.
 
 ## 2. The route ahead
