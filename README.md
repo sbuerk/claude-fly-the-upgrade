@@ -27,6 +27,7 @@ log inside the project. Nothing is estimated.
 - [The full process guide](docs/PROCESS.md)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Updating the plugin](#updating-the-plugin)
 - [Prepare the project](#prepare-the-project)
 - [Upgrade a project, step by step](#upgrade-a-project-step-by-step)
 - [What you get: the flight log](#what-you-get-the-flight-log)
@@ -89,13 +90,7 @@ inside that project, which records it in the project's `.claude/settings.json`:
 claude plugin install fly-the-upgrade@fly-the-upgrade --scope project
 ```
 
-**Update and remove:**
-
-```bash
-claude plugin marketplace update fly-the-upgrade
-claude plugin update fly-the-upgrade@fly-the-upgrade
-claude plugin uninstall fly-the-upgrade@fly-the-upgrade
-```
+**Update and remove:** see [Updating the plugin](#updating-the-plugin).
 
 **Try it without installing** (for example from a local clone):
 
@@ -103,6 +98,76 @@ claude plugin uninstall fly-the-upgrade@fly-the-upgrade
 git clone https://github.com/sbuerk/claude-fly-the-upgrade.git
 claude --plugin-dir ./claude-fly-the-upgrade
 ```
+
+## Updating the plugin
+
+Updates arrive per release: a new version is only offered once the version in
+`.claude-plugin/plugin.json` changes. Refresh the marketplace, then update the
+plugin:
+
+```bash
+claude plugin marketplace update fly-the-upgrade
+claude plugin update fly-the-upgrade@fly-the-upgrade
+```
+
+Start a new Claude Code session afterwards, so the updated skills are loaded.
+Remove it with `claude plugin uninstall fly-the-upgrade@fly-the-upgrade`.
+
+A flight lives in the project's `.upgrade-pilot/`, not in the plugin, so an
+update never touches a running flight. What changes for it is listed per
+version below and in [CHANGELOG.md](CHANGELOG.md).
+
+### Upgrade notes
+
+#### 0.2.x to 0.3.0
+
+- **New questions at initialization** (runtime, commit style, issue handling,
+  context, PHP set). They only apply to new flights. A flight opened with 0.2.x
+  keeps working: without a commit policy it commits in TYPO3 Core style without
+  issue references, and pushing stays allowed as before.
+- **Adopting the new commit policy in a running flight**: add a `commit` block
+  to `.upgrade-pilot/config.json` rather than re-running `init --force`, which
+  would replace the flight log:
+
+  ```json
+  "commit": {
+      "style": "youtrack",
+      "template": null,
+      "tracker": "youtrack",
+      "project_key": "PRJ",
+      "issue_mode": "placeholder",
+      "issue": "PRJ-100",
+      "subject_max": 52,
+      "body_wrap": 72
+  },
+  "allow_push": false
+  ```
+
+- **`rules commit` changed**: it renders the message itself and takes
+  `--subject`, `--body` or `--body-file` and `--step`. `--message-file` is
+  gone. A rule that is applied but not yet committed is committed with the new
+  options.
+- **Composer changes need recorded commands**: `upgrade-pilot commit` refuses
+  changed `composer.json` or `composer.lock` without a command recorded through
+  `upgrade-pilot composer ...` or `upgrade-pilot run -- ...`. If composer files
+  were changed by hand before the update, commit them with plain git once, or
+  redo the change through the recorded commands.
+- **`bump apply`** now changes constraints through `composer require --no-update`
+  and records those commands for the bump commit.
+- **Reports**: `report` writes per-phase reports (`--phase preflight|flight|postflight|final|all`),
+  with a PM/customer variant in English and German. Without `--phase` it writes
+  the final reports and, as before, `UPGRADE-REPORT.md`.
+- **New checklist lines** (`pf.context`, `pf.dependency-docs`,
+  `fl.dependency-migrations`) appear as open in running flights and have to be
+  answered before their gate.
+
+#### 0.1.x to 0.2.0
+
+- **TYPO3 Console support**: `schema check|plan|apply` and new checklist lines
+  (`pf.schema-tooling`, `pst.schema-destructive`), which appear as open in
+  running flights.
+- **`bump`** also raises TYPO3 Console and the testing framework when needed,
+  so run `upgrade-pilot versions` again before the bump to refresh the facts.
 
 ## Prepare the project
 
