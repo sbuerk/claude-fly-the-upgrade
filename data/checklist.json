@@ -31,53 +31,54 @@
         {
           "title": "The aircraft you have",
           "items": [
-            {"id": "pf.current-version", "owner": "pilot", "title": "Current version known, on its latest patch, documented", "how": "init records the installed core; composer outdated --patch-only shows missing patches"},
-            {"id": "pf.own-extensions", "owner": "shared", "title": "Own extensions inventoried, each with a named owner", "how": "init lists own extensions; a human names owners"},
-            {"id": "pf.third-party", "owner": "pilot", "title": "Third-party extensions: a target-version release exists, or a plan does", "how": "bump probe resolves the target graph without writing anything"},
-            {"id": "pf.unowned", "owner": "human", "title": "Unowned extensions forked, replaced or dropped, decided now", "how": "ask"},
-            {"id": "pf.your-changes", "owner": "shared", "title": "Your changes to others listed: Fluid overrides, FlexForm extensions, XCLASSes, hooks", "how": "contacts lists XCLASS, hooks and template root path overrides"},
-            {"id": "pf.platform", "owner": "pilot", "title": "Platform recorded: PHP, database, web server, image processing", "how": "init records runtime PHP and database"}
+            {"id": "pf.context", "owner": "pilot", "title": "Pre-collected context (issues, documents, notes) read, digested and reflected in QRH and briefing", "title_de": "Vorab gesammelte Informationen (Tickets, Dokumente, Notizen) gelesen und in QRH und Briefing berücksichtigt", "how": "context list, read every reference, context add with a digest"},
+            {"id": "pf.current-version", "owner": "pilot", "title": "Current version known, on its latest patch, documented", "title_de": "Aktuelle Version bekannt, auf dem neuesten Patch-Stand, dokumentiert", "how": "init records the installed core, composer outdated --patch-only shows missing patches"},
+            {"id": "pf.own-extensions", "owner": "shared", "title": "Own extensions inventoried, each with a named owner", "title_de": "Eigene Extensions erfasst, jede mit einer verantwortlichen Person", "how": "init lists own extensions, a human names owners"},
+            {"id": "pf.third-party", "owner": "pilot", "title": "Third-party extensions: a target-version release exists, or a plan does", "title_de": "Fremd-Extensions: Es gibt eine Version für die Zielversion oder einen Plan", "how": "bump probe resolves the target graph without writing anything"},
+            {"id": "pf.unowned", "owner": "human", "title": "Unowned extensions forked, replaced or dropped, decided now", "title_de": "Verwaiste Extensions: geforkt, ersetzt oder entfernt, jetzt entschieden", "how": "ask"},
+            {"id": "pf.your-changes", "owner": "shared", "title": "Your changes to others listed: Fluid overrides, FlexForm extensions, XCLASSes, hooks", "title_de": "Eigene Anpassungen an Fremdcode erfasst: Fluid-Overrides, FlexForm-Erweiterungen, XCLASSes, Hooks", "how": "contacts lists XCLASS, hooks and template root path overrides"},
+            {"id": "pf.platform", "owner": "pilot", "title": "Platform recorded: PHP, database, web server, image processing", "title_de": "Plattform erfasst: PHP, Datenbank, Webserver, Bildverarbeitung", "how": "init records runtime PHP and database"}
           ]
         },
         {
           "title": "The route ahead",
           "items": [
-            {"id": "pf.target-version", "owner": "shared", "title": "Target version decided, dated and justified against the support calendar", "how": "versions shows support dates from get.typo3.org"},
-            {"id": "pf.changelogs", "owner": "shared", "title": "Changelogs read and triaged: Breaking, Deprecation, Feature, Important", "how": "changelog fetch + changelog match"},
-            {"id": "pf.breaking-worklist", "owner": "pilot", "title": "Breaking changes that touch your code extracted into a work list", "how": "changelog match output goes into QRH.md"},
-            {"id": "pf.dependency-docs", "owner": "pilot", "title": "Changelogs, upgrade guides and release notes of every third-party package that moves read, breaking entries and new upgrade wizards in the QRH", "how": "deps list after bump probe, then deps docs"},
-            {"id": "pf.php-baseline", "owner": "shared", "title": "PHP baseline supported by both source and target, live in production before departure", "how": "versions shows the PHP overlap, a human confirms production"}
+            {"id": "pf.target-version", "owner": "shared", "title": "Target version decided, dated and justified against the support calendar", "title_de": "Zielversion festgelegt, terminiert und mit dem Support-Kalender begründet", "how": "versions shows support dates from get.typo3.org"},
+            {"id": "pf.changelogs", "owner": "shared", "title": "Changelogs read and triaged: Breaking, Deprecation, Feature, Important", "title_de": "Changelogs gelesen und eingeordnet: Breaking, Deprecation, Feature, Important", "how": "changelog fetch + changelog match"},
+            {"id": "pf.breaking-worklist", "owner": "pilot", "title": "Breaking changes that touch your code extracted into a work list", "title_de": "Breaking Changes, die den eigenen Code betreffen, als Arbeitsliste erfasst", "how": "changelog match output goes into QRH.md"},
+            {"id": "pf.dependency-docs", "owner": "pilot", "title": "Changelogs, upgrade guides and release notes of every third-party package that moves read, breaking entries and new upgrade wizards in the QRH", "title_de": "Changelogs, Upgrade-Anleitungen und Release Notes aller Fremdpakete gelesen, die sich ändern, Breaking-Einträge und neue Upgrade-Wizards im QRH erfasst", "how": "deps list after bump probe, then deps docs"},
+            {"id": "pf.php-baseline", "owner": "shared", "title": "PHP baseline supported by both source and target, live in production before departure", "title_de": "PHP-Version, die Quell- und Zielversion unterstützen, vor dem Start in Produktion", "how": "versions shows the PHP overlap, a human confirms production"}
           ]
         },
         {
           "title": "Airworthy on the version you are on",
           "items": [
-            {"id": "pf.deprecations", "owner": "pilot", "title": "Deprecations cleared on the current core, or on the MEL with a reason", "how": "measure with failOnDeprecation, rules campaign on the current level set"},
-            {"id": "pf.scanner", "owner": "pilot", "title": "Extension Scanner run, strong matches at zero", "how": "scan"},
-            {"id": "pf.tca", "owner": "pilot", "title": "TCA migrations checked, the list is empty", "how": "tca (headless equivalent of the backend check)"},
-            {"id": "pf.rector-fractor-current", "owner": "pilot", "title": "Rector and Fractor clean against the current version's rule set", "how": "rules campaigns preflight-rector / preflight-fractor"},
-            {"id": "pf.deprecation-log", "owner": "human", "title": "Deprecation log switched on and read under real editor traffic", "how": "needs production-like traffic"},
-            {"id": "pf.ci", "owner": "shared", "title": "CI runs scanner and Rector, so none of this can drift back", "how": "check the CI configuration"}
+            {"id": "pf.deprecations", "owner": "pilot", "title": "Deprecations cleared on the current core, or on the MEL with a reason", "title_de": "Deprecations auf dem aktuellen Core bereinigt oder mit Begründung in der MEL", "how": "measure with failOnDeprecation, rules campaign on the current level set"},
+            {"id": "pf.scanner", "owner": "pilot", "title": "Extension Scanner run, strong matches at zero", "title_de": "Extension Scanner ausgeführt, keine sicheren Treffer (strong)", "how": "scan"},
+            {"id": "pf.tca", "owner": "pilot", "title": "TCA migrations checked, the list is empty", "title_de": "TCA-Migrationen geprüft, die Liste ist leer", "how": "tca (headless equivalent of the backend check)"},
+            {"id": "pf.rector-fractor-current", "owner": "pilot", "title": "Rector and Fractor clean against the current version's rule set", "title_de": "Rector und Fractor gegen die Regeln der aktuellen Version sauber", "how": "rules campaigns preflight-rector / preflight-fractor"},
+            {"id": "pf.deprecation-log", "owner": "human", "title": "Deprecation log switched on and read under real editor traffic", "title_de": "Deprecation-Log aktiviert und unter echter Redaktionslast gelesen", "how": "needs production-like traffic"},
+            {"id": "pf.ci", "owner": "shared", "title": "CI runs scanner and Rector, so none of this can drift back", "title_de": "CI führt Scanner und Rector aus, damit nichts davon zurückkehrt", "how": "check the CI configuration"}
           ]
         },
         {
           "title": "Instruments",
           "items": [
-            {"id": "pf.tests-exist", "owner": "pilot", "title": "A test suite exists, runs, and executes the code that touches the core", "how": "contacts + measure"},
-            {"id": "pf.coverage", "owner": "pilot", "title": "Coverage aimed at core contact points, not at a percentage", "how": "contacts shows uncovered contact points, instruments skill writes the missing tests"},
-            {"id": "pf.baseline", "owner": "pilot", "title": "Baseline recorded: the suite's current result is known and understood", "how": "measure --label baseline"}
+            {"id": "pf.tests-exist", "owner": "pilot", "title": "A test suite exists, runs, and executes the code that touches the core", "title_de": "Eine Testsuite existiert, läuft und führt den Code aus, der den Core berührt", "how": "contacts + measure"},
+            {"id": "pf.coverage", "owner": "pilot", "title": "Coverage aimed at core contact points, not at a percentage", "title_de": "Testabdeckung auf die Berührungspunkte mit dem Core ausgerichtet, nicht auf einen Prozentwert", "how": "contacts shows uncovered contact points, instruments skill writes the missing tests"},
+            {"id": "pf.baseline", "owner": "pilot", "title": "Baseline recorded: the suite's current result is known and understood", "title_de": "Ausgangsmessung erfasst: Das aktuelle Ergebnis der Tests ist bekannt und verstanden", "how": "measure --label baseline"}
           ]
         },
         {
           "title": "Crew and contingency",
           "items": [
-            {"id": "pf.briefing", "owner": "shared", "title": "Briefing written: what changes, what to expect, who does what", "how": "BRIEFING.md drafted from the flight log"},
-            {"id": "pf.qrh", "owner": "pilot", "title": "QRH: the failures you expect, each with its prepared answer", "how": "QRH.md"},
-            {"id": "pf.mel", "owner": "shared", "title": "MEL: what you accept as broken, reason and rectification date each", "how": "MEL.md"},
-            {"id": "pf.schema-tooling", "owner": "shared", "title": "Schema update scriptable: a database compare with dry run for every environment (TYPO3 Console database:updateschema), or the manual steps written down", "how": "schema check, a human decides whether to add TYPO3 Console"},
-            {"id": "pf.backup-restore", "owner": "shared", "title": "Backup and restore rehearsed, not assumed", "how": "snapshot take + snapshot restore on the local runtime, production is human"},
-            {"id": "pf.rollback-criteria", "owner": "human", "title": "Rollback criteria written down before departure", "how": "ask"},
-            {"id": "pf.window-people", "owner": "human", "title": "Window long enough for plan plus surprises, right people present", "how": "ask"}
+            {"id": "pf.briefing", "owner": "shared", "title": "Briefing written: what changes, what to expect, who does what", "title_de": "Briefing geschrieben: Was ändert sich, was ist zu erwarten, wer macht was", "how": "BRIEFING.md drafted from the flight log"},
+            {"id": "pf.qrh", "owner": "pilot", "title": "QRH: the failures you expect, each with its prepared answer", "title_de": "QRH: die erwarteten Fehler, jeweils mit vorbereiteter Antwort", "how": "QRH.md"},
+            {"id": "pf.mel", "owner": "shared", "title": "MEL: what you accept as broken, reason and rectification date each", "title_de": "MEL: bewusst in Kauf genommene Einschränkungen, jeweils mit Grund und Termin", "how": "MEL.md"},
+            {"id": "pf.schema-tooling", "owner": "shared", "title": "Schema update scriptable: a database compare with dry run for every environment (TYPO3 Console database:updateschema), or the manual steps written down", "title_de": "Datenbank-Schemaänderungen skriptbar mit Probelauf für jede Umgebung (TYPO3 Console) oder manuelle Schritte beschrieben", "how": "schema check, a human decides whether to add TYPO3 Console"},
+            {"id": "pf.backup-restore", "owner": "shared", "title": "Backup and restore rehearsed, not assumed", "title_de": "Sicherung und Wiederherstellung geprobt, nicht angenommen", "how": "snapshot take + snapshot restore on the local runtime, production is human"},
+            {"id": "pf.rollback-criteria", "owner": "human", "title": "Rollback criteria written down before departure", "title_de": "Kriterien für den Rückzug vor dem Start schriftlich festgelegt", "how": "ask"},
+            {"id": "pf.window-people", "owner": "human", "title": "Window long enough for plan plus surprises, right people present", "title_de": "Zeitfenster reicht für Plan und Überraschungen, die richtigen Personen sind verfügbar", "how": "ask"}
           ]
         }
       ]
@@ -105,42 +106,42 @@
         {
           "title": "Before the roll",
           "items": [
-            {"id": "fl.freeze", "owner": "human", "title": "Freeze announced: content, code and deploys", "how": "ask"},
-            {"id": "fl.backup", "owner": "shared", "title": "Backup taken: database and files, verified", "how": "snapshot take locally, production is human"}
+            {"id": "fl.freeze", "owner": "human", "title": "Freeze announced: content, code and deploys", "title_de": "Einfrieren angekündigt: Inhalte, Code und Deployments", "how": "ask"},
+            {"id": "fl.backup", "owner": "shared", "title": "Backup taken: database and files, verified", "title_de": "Sicherung erstellt: Datenbank und Dateien, geprüft", "how": "snapshot take locally, production is human"}
           ]
         },
         {
           "title": "The sequence",
           "items": [
-            {"id": "fl.branch", "owner": "pilot", "title": "1 - Branch: everything after this point is reversible", "how": "git switch -c <flight branch>"},
-            {"id": "fl.platform", "owner": "pilot", "title": "2 - Platform: PHP version, composer platform config, extension constraints", "how": "versions + bump"},
-            {"id": "fl.packages", "owner": "pilot", "title": "3 - Packages: core, extensions and tooling raised in one transaction", "how": "bump --apply then composer update -W"},
-            {"id": "fl.rector", "owner": "pilot", "title": "4 - Rector after the packages, reviewed hunk by hunk", "how": "rules campaign flight-rector"},
-            {"id": "fl.fractor", "owner": "pilot", "title": "5 - Fractor after the packages: TypoScript, Fluid, YAML, XLIFF", "how": "rules campaign flight-fractor"},
-            {"id": "fl.scan", "owner": "pilot", "title": "6 - Scan: Extension Scanner and TCA check with target rules", "how": "scan + tca"},
-            {"id": "fl.schema", "owner": "pilot", "title": "7 - Schema: extension setup and database compare, the point of no return", "how": "schema plan, then schema apply (TYPO3 Console safe updates when installed, core extension:setup otherwise)"},
-            {"id": "fl.wizards", "owner": "pilot", "title": "8 - Wizards: list, run, then verify what each one did", "how": "typo3 upgrade:list / upgrade:run on the local runtime"},
-            {"id": "fl.caches", "owner": "pilot", "title": "9 - Caches: flush, warm, then look at the site", "how": "typo3 cache:flush + a frontend request"}
+            {"id": "fl.branch", "owner": "pilot", "title": "1 - Branch: everything after this point is reversible", "title_de": "1 - Branch: Alles danach ist umkehrbar", "how": "git switch -c <flight branch>"},
+            {"id": "fl.platform", "owner": "pilot", "title": "2 - Platform: PHP version, composer platform config, extension constraints", "title_de": "2 - Plattform: PHP-Version, Composer-Plattform, Extension-Abhängigkeiten", "how": "versions + bump"},
+            {"id": "fl.packages", "owner": "pilot", "title": "3 - Packages: core, extensions and tooling raised in one transaction", "title_de": "3 - Pakete: Core, Extensions und Werkzeuge in einem Schritt angehoben", "how": "bump --apply then composer update -W"},
+            {"id": "fl.rector", "owner": "pilot", "title": "4 - Rector after the packages, reviewed hunk by hunk", "title_de": "4 - Rector nach den Paketen, Änderung für Änderung geprüft", "how": "rules campaign flight-rector"},
+            {"id": "fl.fractor", "owner": "pilot", "title": "5 - Fractor after the packages: TypoScript, Fluid, YAML, XLIFF", "title_de": "5 - Fractor nach den Paketen: TypoScript, Fluid, YAML, XLIFF", "how": "rules campaign flight-fractor"},
+            {"id": "fl.scan", "owner": "pilot", "title": "6 - Scan: Extension Scanner and TCA check with target rules", "title_de": "6 - Prüfung: Extension Scanner und TCA-Prüfung mit den Regeln der Zielversion", "how": "scan + tca"},
+            {"id": "fl.schema", "owner": "pilot", "title": "7 - Schema: extension setup and database compare, the point of no return", "title_de": "7 - Datenbank-Schema: Extension-Setup und Datenbankabgleich, ab hier kein einfaches Zurück", "how": "schema plan, then schema apply (TYPO3 Console safe updates when installed, core extension:setup otherwise)"},
+            {"id": "fl.wizards", "owner": "pilot", "title": "8 - Wizards: list, run, then verify what each one did", "title_de": "8 - Upgrade-Wizards: anzeigen, ausführen, dann prüfen, was jeder getan hat", "how": "typo3 upgrade:list / upgrade:run on the local runtime"},
+            {"id": "fl.caches", "owner": "pilot", "title": "9 - Caches: flush, warm, then look at the site", "title_de": "9 - Caches: leeren, aufwärmen, dann die Website ansehen", "how": "typo3 cache:flush + a frontend request"}
           ]
         },
         {
           "title": "Working the failures",
           "items": [
-            {"id": "fl.one-at-a-time", "owner": "pilot", "title": "Red tests worked one at a time, in order", "how": "measure after each fix"},
-            {"id": "fl.generated-code", "owner": "pilot", "title": "Generated code read before it is trusted", "how": "rules apply flags new files and TODO markers"},
-            {"id": "fl.dependency-migrations", "owner": "pilot", "title": "Migration steps of the dependencies done: their breaking entries handled, their upgrade wizards run in step 8", "how": "deps list --from-lock <pre-flight branch>, then deps docs"},
-            {"id": "fl.third-party-gaps", "owner": "shared", "title": "Third-party gaps closed by update, patch, fork or replacement", "how": "composer resolution + scan --all"},
-            {"id": "fl.overrides", "owner": "shared", "title": "Fluid template and FlexForm overrides re-based onto the new originals", "how": "contacts lists overridden template paths"},
-            {"id": "fl.new-deprecations", "owner": "pilot", "title": "Target-version deprecations cleaned as they appear", "how": "measure with failOnDeprecation"},
-            {"id": "fl.two-kinds", "owner": "pilot", "title": "Errors separated: broken by the upgrade, or broken already", "how": "compare against the baseline measurement"}
+            {"id": "fl.one-at-a-time", "owner": "pilot", "title": "Red tests worked one at a time, in order", "title_de": "Rote Tests einzeln und der Reihe nach bearbeitet", "how": "measure after each fix"},
+            {"id": "fl.generated-code", "owner": "pilot", "title": "Generated code read before it is trusted", "title_de": "Generierter Code gelesen, bevor ihm vertraut wird", "how": "rules apply flags new files and TODO markers"},
+            {"id": "fl.dependency-migrations", "owner": "pilot", "title": "Migration steps of the dependencies done: their breaking entries handled, their upgrade wizards run in step 8", "title_de": "Migrationsschritte der Fremdpakete erledigt: Breaking-Einträge bearbeitet, ihre Upgrade-Wizards in Schritt 8 ausgeführt", "how": "deps list --from-lock <pre-flight branch>, then deps docs"},
+            {"id": "fl.third-party-gaps", "owner": "shared", "title": "Third-party gaps closed by update, patch, fork or replacement", "title_de": "Lücken bei Fremd-Extensions geschlossen: Update, Patch, Fork oder Ersatz", "how": "composer resolution + scan --all"},
+            {"id": "fl.overrides", "owner": "shared", "title": "Fluid template and FlexForm overrides re-based onto the new originals", "title_de": "Fluid-Template- und FlexForm-Overrides auf die neuen Originale angepasst", "how": "contacts lists overridden template paths"},
+            {"id": "fl.new-deprecations", "owner": "pilot", "title": "Target-version deprecations cleaned as they appear", "title_de": "Deprecations der Zielversion bereinigt, sobald sie auftreten", "how": "measure with failOnDeprecation"},
+            {"id": "fl.two-kinds", "owner": "pilot", "title": "Errors separated: broken by the upgrade, or broken already", "title_de": "Fehler getrennt: durch das Upgrade verursacht oder schon vorher vorhanden", "how": "compare against the baseline measurement"}
           ]
         },
         {
           "title": "Cockpit discipline",
           "items": [
-            {"id": "fl.sterile", "owner": "pilot", "title": "Sterile cockpit: no unrelated refactoring on this branch", "how": "commit review"},
-            {"id": "fl.one-tool-one-commit", "owner": "pilot", "title": "One tool, one commit (one rule, one commit for Rector and Fractor)", "how": "rules commit"},
-            {"id": "fl.go-around", "owner": "human", "title": "Go-around criteria agreed in advance", "how": "ask"}
+            {"id": "fl.sterile", "owner": "pilot", "title": "Sterile cockpit: no unrelated refactoring on this branch", "title_de": "Keine fachfremden Umbauten auf diesem Branch", "how": "commit review"},
+            {"id": "fl.one-tool-one-commit", "owner": "pilot", "title": "One tool, one commit (one rule, one commit for Rector and Fractor)", "title_de": "Ein Werkzeug, ein Commit (eine Regel, ein Commit bei Rector und Fractor)", "how": "rules commit"},
+            {"id": "fl.go-around", "owner": "human", "title": "Go-around criteria agreed in advance", "title_de": "Kriterien für den Abbruch vorab vereinbart", "how": "ask"}
           ]
         }
       ]
@@ -165,40 +166,40 @@
         {
           "title": "Straight after landing",
           "items": [
-            {"id": "pst.frontend", "owner": "shared", "title": "Frontend smoke-tested by a human, not by a status code", "how": "pilot requests pages, a human looks"},
-            {"id": "pst.backend", "owner": "human", "title": "Backend: editors can do their daily work", "how": "ask"},
-            {"id": "pst.scheduler", "owner": "shared", "title": "Scheduler tasks registered, running and finishing", "how": "typo3 scheduler:list if installed"},
-            {"id": "pst.logs", "owner": "human", "title": "Error rates watched for the first days", "how": "ask"}
+            {"id": "pst.frontend", "owner": "shared", "title": "Frontend smoke-tested by a human, not by a status code", "title_de": "Frontend von einem Menschen geprüft, nicht nur per Statuscode", "how": "pilot requests pages, a human looks"},
+            {"id": "pst.backend", "owner": "human", "title": "Backend: editors can do their daily work", "title_de": "Backend: Redaktion kann die tägliche Arbeit erledigen", "how": "ask"},
+            {"id": "pst.scheduler", "owner": "shared", "title": "Scheduler tasks registered, running and finishing", "title_de": "Scheduler-Aufgaben registriert, laufen und werden beendet", "how": "typo3 scheduler:list if installed"},
+            {"id": "pst.logs", "owner": "human", "title": "Error rates watched for the first days", "title_de": "Fehlerraten in den ersten Tagen beobachtet", "how": "ask"}
           ]
         },
         {
           "title": "Sweep again, with the new rules",
           "items": [
-            {"id": "pst.scanner", "owner": "pilot", "title": "Extension Scanner re-run, it now warns about the version after this one", "how": "scan --label postflight"},
-            {"id": "pst.tca", "owner": "pilot", "title": "TCA migrations re-checked on the new core", "how": "tca --label postflight"},
-            {"id": "pst.deprecation-log", "owner": "shared", "title": "Deprecation log enabled on the new version and read under traffic", "how": "pilot can crawl locally, real traffic is human"},
-            {"id": "pst.static-missed", "owner": "pilot", "title": "What static analysis missed collected and turned into work items", "how": "compare test findings with scanner findings"}
+            {"id": "pst.scanner", "owner": "pilot", "title": "Extension Scanner re-run, it now warns about the version after this one", "title_de": "Extension Scanner erneut ausgeführt, er warnt jetzt vor der nächsten Version", "how": "scan --label postflight"},
+            {"id": "pst.tca", "owner": "pilot", "title": "TCA migrations re-checked on the new core", "title_de": "TCA-Migrationen auf dem neuen Core erneut geprüft", "how": "tca --label postflight"},
+            {"id": "pst.deprecation-log", "owner": "shared", "title": "Deprecation log enabled on the new version and read under traffic", "title_de": "Deprecation-Log auf der neuen Version aktiviert und unter Last gelesen", "how": "pilot can crawl locally, real traffic is human"},
+            {"id": "pst.static-missed", "owner": "pilot", "title": "What static analysis missed collected and turned into work items", "title_de": "Was die statische Analyse übersehen hat, gesammelt und als Aufgaben erfasst", "how": "compare test findings with scanner findings"}
           ]
         },
         {
           "title": "Remove the ferry equipment",
           "items": [
-            {"id": "pst.schema-destructive", "owner": "shared", "title": "Destructive schema changes (drops, renames) listed and scheduled after the rollback window", "how": "schema plan --destructive (TYPO3 Console), or Analyze Database Structure"},
-            {"id": "pst.shims", "owner": "pilot", "title": "Shims and polyfills added for the migration removed", "how": "diff review"},
-            {"id": "pst.upgrade-packages", "owner": "shared", "title": "Upgrade-only packages removed or moved to an isolated tools install", "how": "decision recorded"},
-            {"id": "pst.markers", "owner": "pilot", "title": "Resolved TODO markers deleted", "how": "grep for markers added during the flight"},
-            {"id": "pst.constraints", "owner": "pilot", "title": "Constraints re-pinned in own extensions (composer.json, ext_emconf.php)", "how": "bump already raised them, verify"},
-            {"id": "pst.ci", "owner": "shared", "title": "CI moved to the new core, rule sets raised to the next target", "how": "check CI configuration"}
+            {"id": "pst.schema-destructive", "owner": "shared", "title": "Destructive schema changes (drops, renames) listed and scheduled after the rollback window", "title_de": "Destruktive Schemaänderungen (Löschen, Umbenennen) erfasst und nach dem Rückzugsfenster eingeplant", "how": "schema plan --destructive (TYPO3 Console), or Analyze Database Structure"},
+            {"id": "pst.shims", "owner": "pilot", "title": "Shims and polyfills added for the migration removed", "title_de": "Für die Migration eingebaute Übergangslösungen entfernt", "how": "diff review"},
+            {"id": "pst.upgrade-packages", "owner": "shared", "title": "Upgrade-only packages removed or moved to an isolated tools install", "title_de": "Nur für das Upgrade benötigte Pakete entfernt oder in eine getrennte Werkzeug-Installation verschoben", "how": "decision recorded"},
+            {"id": "pst.markers", "owner": "pilot", "title": "Resolved TODO markers deleted", "title_de": "Erledigte TODO-Markierungen gelöscht", "how": "grep for markers added during the flight"},
+            {"id": "pst.constraints", "owner": "pilot", "title": "Constraints re-pinned in own extensions (composer.json, ext_emconf.php)", "title_de": "Abhängigkeiten der eigenen Extensions neu festgelegt (composer.json, ext_emconf.php)", "how": "bump already raised them, verify"},
+            {"id": "pst.ci", "owner": "shared", "title": "CI moved to the new core, rule sets raised to the next target", "title_de": "CI auf den neuen Core umgestellt, Regeln auf das nächste Ziel angehoben", "how": "check CI configuration"}
           ]
         },
         {
           "title": "Record it while you still remember",
           "items": [
-            {"id": "pst.features", "owner": "human", "title": "New features triaged: adopt, schedule or decline", "how": "changelog match lists Feature entries"},
-            {"id": "pst.report", "owner": "pilot", "title": "Upgrade report: predicted versus actual, what took longest", "how": "report"},
-            {"id": "pst.docs", "owner": "shared", "title": "Documentation updated now", "how": "diff review"},
-            {"id": "pst.checklist", "owner": "shared", "title": "Checklist updated: surprises become lines", "how": "debrief section of the report"},
-            {"id": "pst.maintenance", "owner": "shared", "title": "Next flight dated from the support calendar", "how": "versions"}
+            {"id": "pst.features", "owner": "human", "title": "New features triaged: adopt, schedule or decline", "title_de": "Neue Funktionen bewertet: übernehmen, einplanen oder begründet ablehnen", "how": "changelog match lists Feature entries"},
+            {"id": "pst.report", "owner": "pilot", "title": "Upgrade report: predicted versus actual, what took longest", "title_de": "Upgrade-Bericht: Vorhersage und Ergebnis, was am längsten gedauert hat", "how": "report"},
+            {"id": "pst.docs", "owner": "shared", "title": "Documentation updated now", "title_de": "Dokumentation jetzt aktualisiert", "how": "diff review"},
+            {"id": "pst.checklist", "owner": "shared", "title": "Checklist updated: surprises become lines", "title_de": "Checkliste aktualisiert: Überraschungen werden zu neuen Punkten", "how": "debrief section of the report"},
+            {"id": "pst.maintenance", "owner": "shared", "title": "Next flight dated from the support calendar", "title_de": "Nächstes Upgrade anhand des Support-Kalenders terminiert", "how": "versions"}
           ]
         }
       ]

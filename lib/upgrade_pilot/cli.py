@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from . import changelog, checklist, contacts, deps, init, instruments, platform, render, rules, schema
+from . import changelog, checklist, commit, contacts, context, deps, init, instruments, platform, reports, rules, schema
 
 
 def build() -> argparse.ArgumentParser:
@@ -15,12 +15,27 @@ def build() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest='command', required=True)
 
     p = sub.add_parser('init', help='detect the project and open a flight log in .upgrade-pilot/')
-    p.add_argument('--target', required=True, help='target major.minor, e.g. 13.4')
+    p.add_argument('--target', help='target major.minor, e.g. 13.4')
+    p.add_argument('--detect', action='store_true', help='only print what the project offers (runtimes, commit style evidence) as JSON')
+    p.add_argument('--runtime', choices=['ddev', 'direnv', 'local', 'custom'], help='where PHP and composer run (default: detected)')
     p.add_argument('--source', help='source major.minor (default: from composer.lock)')
     p.add_argument('--ext', action='append', default=[], help='own extension path (repeatable, default: detected)')
     p.add_argument('--exec', help='runtime wrapper with {cmd}, e.g. "docker compose exec -T php sh -c {cmd}"')
     p.add_argument('--composer', help='composer command on the host, e.g. "ddev composer"')
     p.add_argument('--gates', choices=['human', 'auto'], default='human', help='who decides gates (default human)')
+    p.add_argument('--commit-style', choices=['typo3', 'youtrack', 'custom'], default='typo3',
+                   help='typo3: [TAG] Subject, refs as Related: lines. youtrack: [TAG] PRJ-123: Subject. custom: --commit-template')
+    p.add_argument('--commit-template', help='custom subject template with {tag}, {ref}, {subject}')
+    p.add_argument('--tracker', default='none', help='issue tracker: youtrack, github, gitlab, jira, other or none')
+    p.add_argument('--project-key', help='issue project key, e.g. PRJ')
+    p.add_argument('--issue-mode', choices=['none', 'single', 'per-step', 'placeholder'], default='none',
+                   help='single: one ref for all commits. per-step: --issue is the parent, one issue per step. '
+                        'placeholder: {ISSUE-nn} placeholders, ISSUES.md, later "issues apply"')
+    p.add_argument('--issue', help='the issue reference (single) or the parent issue (per-step, placeholder)')
+    p.add_argument('--php-set', action='store_true', help='also run a Rector campaign with the PHP level set for the target minimum PHP')
+    p.add_argument('--allow-push', action='store_true', help='do not block git push while the flight is open (default: blocked)')
+    p.add_argument('--context', action='append', default=[], metavar='REF',
+                   help='pre-collected context to read first: issue key (PRJ-123, #12, owner/repo#12), URL or file (repeatable)')
     p.add_argument('--branch-prefix', default='upgrade', help='prefix for the pre-flight and flight branches')
     p.add_argument('--project', help='project directory (default: git toplevel of cwd)')
     p.add_argument('--force', action='store_true', help='start over, replacing an existing flight')
@@ -127,7 +142,9 @@ def build() -> argparse.ArgumentParser:
 
     c = rsub.add_parser('config', help='create the tool config for own extensions, or change its level set')
     c.add_argument('--tool', choices=rules.TOOLS, required=True)
-    c.add_argument('--level', required=True, type=int, help='TYPO3 major for UP_TO_TYPO3_<n>')
+    c.add_argument('--set', choices=['typo3', 'php'], default='typo3', help='typo3 level set (rector.php / fractor.php) or PHP level set (rector-php.php)')
+    c.add_argument('--level', type=int, help='TYPO3 major for UP_TO_TYPO3_<n> (typo3 set)')
+    c.add_argument('--php', help='PHP version for the php set (default: minimum PHP of the target core)')
     c.set_defaults(func=rules.cmd_config)
     c = rsub.add_parser('plan', help='dry run: which rules would change which files')
     campaign_args(c)
@@ -142,10 +159,17 @@ def build() -> argparse.ArgumentParser:
     c.add_argument('--rule', help='FQCN or short class name')
     c.add_argument('--allow-dirty', action='store_true')
     c.set_defaults(func=rules.cmd_apply)
-    c = rsub.add_parser('commit', help='commit the applied rule plus your review fixups')
+    c = rsub.add_parser('commit', help='commit the applied rule plus your review fixups, in the configured commit style')
     campaign_args(c)
     c.add_argument('--rule')
-    c.add_argument('--message-file', help='commit message file (project commit rules apply)')
+    c.add_argument('--tag', default='TASK')
+    c.add_argument('--subject', required=True, help='what changed in the code, without tag and issue reference')
+    c.add_argument('--body', help='why, changelog reference, manual completion (the rule class is added when missing)')
+    c.add_argument('--body-file')
+    c.add_argument('--step', help='issue step (default: the campaign name, one issue per campaign)')
+    c.add_argument('--step-title')
+    c.add_argument('--related', action='append')
+    c.add_argument('--breaking', action='store_true')
     c.add_argument('--note', help='review note stored with the rule')
     c.set_defaults(func=rules.cmd_commit)
     c = rsub.add_parser('skip', help='decline a rule (reverts it if applied)')
@@ -157,8 +181,48 @@ def build() -> argparse.ArgumentParser:
     c.add_argument('--campaign')
     c.set_defaults(func=rules.cmd_list)
 
-    p = sub.add_parser('report', help='render UPGRADE-REPORT.md from the flight log')
-    p.set_defaults(func=render.cmd_report)
+    p = sub.add_parser('commit', help='commit all changes in the configured style, with recorded commands and issue references')
+    p.add_argument('--tag', default='TASK', help='TASK, BUGFIX, FEATURE, DOCS, ... (comma separated for several)')
+    p.add_argument('--subject', required=True, help='subject without tag and issue reference')
+    p.add_argument('--body', help='body text (wrapped to the configured width)')
+    p.add_argument('--body-file', help='file with the body text')
+    p.add_argument('--step', help='logical step this commit belongs to (one issue per step in per-step and placeholder mode)')
+    p.add_argument('--step-title', help='title of the step issue (default: the subject)')
+    p.add_argument('--related', action='append', help='extra issue reference for a Related: line (repeatable)')
+    p.add_argument('--breaking', action='store_true', help='mark as breaking ([!!!])')
+    p.add_argument('--into-composer-commit', action='store_true', help='fold composer-only changes into the branch\'s composer commit')
+    p.add_argument('--dry-run', action='store_true', help='print the message, commit nothing')
+    p.set_defaults(func=commit.cmd_commit)
+
+    p = sub.add_parser('composer', help='run composer where the project runs it and record the command for the next commit')
+    p.add_argument('--no-record', action='store_true', help='do not record (read-only commands). Must come before the composer arguments')
+    p.add_argument('args', nargs=argparse.REMAINDER, help='composer arguments, passed on as they are')
+    p.set_defaults(func=commit.cmd_composer)
+
+    p = sub.add_parser('run', help='run a host command (e.g. jq on composer.json) and record it for the next commit')
+    p.add_argument('args', nargs=argparse.REMAINDER, help='the command, passed on as it is (quote it when it contains pipes or redirects)')
+    p.set_defaults(func=commit.cmd_run)
+
+    p = sub.add_parser('issues', help='issue references of the flight: list, register (set), replace placeholders (apply)')
+    p.add_argument('action', choices=['list', 'set', 'apply'])
+    p.add_argument('--step')
+    p.add_argument('--placeholder', help='e.g. {ISSUE-01}')
+    p.add_argument('--number', help='the real issue reference')
+    p.add_argument('--title')
+    p.add_argument('--description')
+    p.set_defaults(func=commit.cmd_issues)
+
+    p = sub.add_parser('context', help='pre-collected context (issues, documents, notes) and their digests')
+    p.add_argument('action', choices=['list', 'add'])
+    p.add_argument('ref', nargs='?', help='issue key, URL, file path or a short name')
+    p.add_argument('--title')
+    p.add_argument('--file', help='digest to store (markdown)')
+    p.add_argument('--text', help='digest text')
+    p.set_defaults(func=context.cmd_context)
+
+    p = sub.add_parser('report', help='reports for a phase or the whole flight: developer (en), pm/customer (en, de)')
+    p.add_argument('--phase', choices=['preflight', 'flight', 'postflight', 'final', 'all'], default='final')
+    p.set_defaults(func=reports.cmd_report)
     return parser
 
 

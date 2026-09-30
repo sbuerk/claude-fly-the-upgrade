@@ -71,8 +71,11 @@ def find_root(start: str | None = None) -> Path | None:
     return None
 
 
+DIRENV_NOISE = re.compile(r'^(?:\x1b\[[0-9;]*m)*direnv: (?:loading|export|using|unloading) .*$\n?', re.M)
+
+
 def sh(cmd: str, cwd: Path, merge: bool = True, env: dict | None = None, timeout: int | None = None):
-    """Run a host shell command. Returns (exit code, stdout, stderr)."""
+    """Run a host shell command. Returns (exit code, stdout, stderr), without direnv's status lines."""
     proc = subprocess.run(
         cmd,
         shell=True,
@@ -83,7 +86,7 @@ def sh(cmd: str, cwd: Path, merge: bool = True, env: dict | None = None, timeout
         env={**os.environ, **(env or {})},
         timeout=timeout,
     )
-    return proc.returncode, proc.stdout or '', proc.stderr or ''
+    return proc.returncode, DIRENV_NOISE.sub('', proc.stdout or ''), DIRENV_NOISE.sub('', proc.stderr or '')
 
 
 def git(root: Path, *args: str) -> str:

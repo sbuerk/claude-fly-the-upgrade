@@ -128,8 +128,8 @@ def flight_log(flight: Flight) -> str:
     return '\n'.join(lines) + '\n'
 
 
-def cmd_report(args) -> None:
-    flight = Flight.load()
+def final_developer_report(flight: Flight) -> str:
+    """The complete technical record of the flight, all phases."""
     config, log = flight.config, flight.log
     commits = []
     for branch_key in ('preflight', 'flight'):
@@ -202,8 +202,4 @@ def cmd_report(args) -> None:
                   'new checklist lines. Write `.upgrade-pilot/DEBRIEF.md` and run `upgrade-pilot report` again._', '']
     if first:
         lines.insert(2, f'Baseline before departure ({first["suite"]}): {first["summary"]} (exit {first["exit"]}).\n')
-    report = flight.dir / 'UPGRADE-REPORT.md'
-    report.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-    flight.event('upgrade report rendered')
-    flight.save()
-    print(f'report: {flight.rel(report)}')
+    return '\n'.join(lines) + '\n'

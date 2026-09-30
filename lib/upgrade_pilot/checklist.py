@@ -130,6 +130,9 @@ def cmd_status(args) -> None:
                 print(f'  {item_id:<28} {item["owner"]:<7} {item["title"]}')
                 if args.verbose:
                     print(f'  {"":<28} how: {item["how"]}')
+    unread = [c['ref'] for c in log.get('context', []) if not c.get('digest')]
+    if unread:
+        print(f'\ncontext not read yet: {", ".join(unread)} (upgrade-pilot context list)')
     if log.get('measurements'):
         print('\nlast measurements:')
         for m in log['measurements'][-4:]:

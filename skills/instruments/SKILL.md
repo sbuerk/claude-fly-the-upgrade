@@ -45,6 +45,6 @@ Rules:
 
 ## 4. Commit and measure
 
-- One commit per contact area, message per project rules, e.g. `[TASK] Cover the <plugin> plugin with a frontend test`.
+- One commit per contact area through `upgrade-pilot commit --step instruments --tag TASK --subject "Cover the <plugin> plugin with a frontend test" --body-file <file>`.
 - After each commit: `upgrade-pilot measure --label "instruments: <what>"` and note how the number of reported deprecations changed. More findings is the goal of this step, not a regression.
 - When done: `upgrade-pilot contacts --label after-instruments`, then answer `pf.tests-exist` and `pf.coverage` (note the accepted gaps), and let the pre-flight record the `baseline`.

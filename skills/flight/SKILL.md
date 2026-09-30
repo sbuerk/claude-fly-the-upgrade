@@ -20,16 +20,16 @@ The order is not a preference. Do these in sequence, or do several of them twice
 **2. Platform** (`fl.platform`): `upgrade-pilot versions`. If the runtime PHP or `config.platform.php` does not satisfy the target core, stop: moving PHP belongs before departure, on the source version, as its own change.
 
 **3. Packages** (`fl.packages`), one transaction:
-- `upgrade-pilot bump show`, then `upgrade-pilot bump apply`. It raises `typo3/cms-*` to `^<target>` in the root and own extensions' `composer.json`, the `typo3` range in own `ext_emconf.php`, and `typo3/testing-framework` to a major that supports the target.
-- `<composer from config.json> update -W`. Edit constraints then `update -W`, never `composer require typo3/cms-core:^<target>` (it keeps the other core packages locked).
+- `upgrade-pilot bump show`, then `upgrade-pilot bump apply`. It raises `typo3/cms-*` to `^<target>` in the root and own extensions' `composer.json` through `composer require --no-update` commands (recorded for the commit), the `typo3` range in own `ext_emconf.php`, and `typo3/testing-framework` to a major that supports the target.
+- `upgrade-pilot composer update -W`. Raise the constraints first, then `update -W`, never `composer require typo3/cms-core:^<target>` alone (it keeps the other core packages locked). Further composer changes in this transaction also go through `upgrade-pilot composer ...` (or `upgrade-pilot run -- jq ...`), never by editing the files.
 - If it fails, read "Problem 1" completely. Typical causes, in the order they usually appear: an own path package still pinned to the old core, dev tooling pinning a shared dependency (rector, fractor, phpstan, php-parser: raise them in the same transaction), a third-party extension without a release for the target (update, patch, fork or replace: human decision, QRH). Never pass `--ignore-platform-reqs`, and never silence security blocking without telling the user.
 - `fl.dependency-migrations`: the real resolution can differ from the probe. `upgrade-pilot deps list --from-lock <pre-flight branch>` compares the lock files, `upgrade-pilot deps docs` reads the notes for the versions actually installed (sources are cached from the pre-flight). Compare with the QRH, add what is new. The dependencies' breaking entries are worked like core ones below.
-- Check the new versions (`<composer> show "typo3/*"`), commit composer.json(s), lock and ext_emconf changes together (for example `[TASK] Raise TYPO3 to v<target>`).
+- Check the new versions (`upgrade-pilot composer --no-record show "typo3/*"`), then commit composer files, lock and ext_emconf changes together as the **first commit of the flight branch**: `upgrade-pilot commit --tag TASK --subject "Raise TYPO3 to v<target>" --body-file <file> --step bump`. The "Used command(s):" block lists every recorded composer command. A composer-only follow-up later in the flight goes into that commit with `--into-composer-commit`.
 - TYPO3 Console, if installed, moves with the core: `bump` raises it only when its constraint allows no release for the target, and warns when that crosses Console 8.0, where the `typo3cms` binary disappears (deployment scripts must call `typo3` instead). If the pre-flight decided to add Console but composer refused on the source version, add it now, in this transaction.
 - If the test runner needs a core selector or other change for the new version, update `config.json -> tests` now.
 - `upgrade-pilot measure --label "after bump"`. Red is expected: this is the real worklist. Keep this result, it is the reference for the rest of the flight.
 
-**4. Rector** (`fl.rector`): `upgrade-pilot rules config --tool rector --level <target major>`, commit, then campaign `flight-rector` with `fly-the-upgrade:rule-by-rule`.
+**4. Rector** (`fl.rector`): `upgrade-pilot rules config --tool rector --level <target major>`, commit it (`upgrade-pilot commit --step flight-rector ...`), then campaign `flight-rector` with `fly-the-upgrade:rule-by-rule`. If the flight was opened with `--php-set`, the PHP level set follows as campaign `flight-rector-php` after the TYPO3 campaigns (see the rule-by-rule skill).
 
 **5. Fractor** (`fl.fractor`): same with `--tool fractor`, campaign `flight-fractor`. TypoScript, Fluid, YAML, XLIFF: the half Rector never sees.
 
@@ -42,7 +42,7 @@ The order is not a preference. Do these in sequence, or do several of them twice
 - Scanner findings that tests do not reach still need a decision: fix, or MEL.
 - Data: if a change alters how records are read (plugin registration, CType, FlexForm), an upgrade wizard must migrate production data, and test fixtures that model production data get the same migration. Fixture edits are allowed only as that migration, never to make an assertion pass.
 - Own template or FlexForm overrides of core or third-party extensions (`contacts` lists `template-override`): re-base them onto the new originals (`fl.overrides`).
-- One logical fix per commit, message per project rules. No unrelated refactoring (`fl.sterile`, `fl.one-tool-one-commit`).
+- One logical fix per commit through `upgrade-pilot commit --step <slug>`. No unrelated refactoring (`fl.sterile`, `fl.one-tool-one-commit`).
 
 **7. Schema** (`fl.schema`), the point of no return for a real database: on the local runtime only. `upgrade-pilot schema check` tells you what the project has (never assume a command from memory, `database:updateschema` is TYPO3 Console, not core).
 - With TYPO3 Console: `upgrade-pilot schema plan --label flight` shows the safe statements, read them, then `upgrade-pilot schema apply --label flight`. It applies exactly the safe types and repeats plan and apply until the dry run is empty (at most 3 passes). A major step does not always converge in one pass: 12.4 to 13.4 needed two (181, then 266 statements) with either tool. If it does not converge, stop: the same would happen on every environment. The recorded passes are what the production deployment has to run, put them into `BRIEFING.md` and make sure the deployment repeats the update until its dry run is empty.
@@ -58,5 +58,7 @@ The order is not a preference. Do these in sequence, or do several of them twice
 `upgrade-pilot measure --label "cleared"` must be green on every configured suite, without skipped or weakened tests. Then `upgrade-pilot gate flight show`.
 - Human smoke tests, staging deployment and editor testing are `handoff` items: list precisely what to test (plugins, backend modules, anything on the MEL).
 - Gate mode human: present the measurement table from the flight log, scanner and TCA trend, generated code you completed, MEL, and ask. Gate mode auto: GO only on green suites and every pilot item answered.
+
+After the decision: `upgrade-pilot report --phase flight`, write `notes/flight-dev.en.md`, `notes/flight-pm.en.md` and `notes/flight-pm.de.md`, render again (see the upgrade skill).
 
 Do not merge, rebase or push the flight branch into the base branch. That is the humans' call after the gate, and the plugin's hook blocks it anyway.

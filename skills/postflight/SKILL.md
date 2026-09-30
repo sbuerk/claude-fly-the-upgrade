@@ -37,9 +37,12 @@ Green again is the end of the flight, not of the work. Everything found here is 
 - `upgrade-pilot versions` for the next target: support end of the new version gives the date of the next flight (`pst.maintenance`).
 - Deprecation entries in the dependency reports (`.upgrade-pilot/deps/`) are the next upgrade's work list, like the core's: record them in the report.
 - `upgrade-pilot changelog match` lists `Feature` entries touching own code: `pst.features` is a human triage, `handoff` with the list.
-- `upgrade-pilot report` writes `.upgrade-pilot/UPGRADE-REPORT.md` from the flight log: measurements stage by stage, scanner and TCA trend, rule campaigns with generated code and skipped rules, commits of both branches, gates, open handoffs, accepted risks. The debrief is yours to write, in `.upgrade-pilot/DEBRIEF.md` (the report embeds it, re-rendering never overwrites it): what the QRH predicted versus what happened, what took longest, what only the tests caught, and the lines to add to the checklist. Then run `upgrade-pilot report` again (`pst.report`, `pst.checklist`).
+- The debrief is yours to write, in `.upgrade-pilot/DEBRIEF.md`: what the QRH predicted versus what happened, what took longest, what only the tests caught, and the lines to add to the checklist (`pst.report`, `pst.checklist`).
+- Issue placeholders: in placeholder mode, `upgrade-pilot issues list` shows what is still without a real number. Hand `ISSUES.md` to the user. Once they filled the numbers in, `upgrade-pilot issues apply` replaces the placeholders in the commits of both pilot branches (local history rewrite, nothing pushed).
 - `pst.docs`: update the project's own upgrade notes or README if they mention versions or commands that changed.
 
 ## Gate: debriefed
 
-`upgrade-pilot gate postflight show`, then decide per gate mode. A GO sets the phase to `landed`, which also releases the base-branch guard. Tell the user where the branches are, what the report says, and that integrating the branches into the base branch is theirs to do.
+`upgrade-pilot gate postflight show`, then decide per gate mode. A GO sets the phase to `landed`, which also releases the base-branch guard and the push block.
+
+Then the reports: `upgrade-pilot report --phase postflight` and `upgrade-pilot report --phase final`. Write `notes/postflight-*.md` and `notes/final-dev.en.md`, `notes/final-pm.en.md`, `notes/final-pm.de.md`, render both again. `final-dev.en.md` is the complete technical record (also written as `UPGRADE-REPORT.md`, with the debrief), the final PM reports are the summary for project management and the customer. Tell the user where the branches are, what the report says, and that integrating the branches into the base branch is theirs to do.

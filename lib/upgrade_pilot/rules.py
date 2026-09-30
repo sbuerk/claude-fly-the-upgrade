@@ -94,8 +94,49 @@ def extension_paths(flight: Flight) -> list[str]:
     return paths
 
 
+PHP_TEMPLATE = """<?php
+
+declare(strict_types=1);
+
+use Rector\\Config\\RectorConfig;
+
+// PHP level set, applied as its own campaign, one rule per commit.
+return RectorConfig::configure()
+    ->withPaths([
+{paths}
+    ])
+    ->withPhpSets({php_flag}: true);
+"""
+
+
+def php_minimum(flight: Flight) -> str | None:
+    constraint = flight.config.get('facts', {}).get(flight.config['target'], {}).get('core_php') or ''
+    match = re.search(r'(\d+)\.(\d+)', constraint)
+    return f'{match.group(1)}.{match.group(2)}' if match else None
+
+
 def cmd_config(args) -> None:
     flight = Flight.load()
+    if args.set == 'php':
+        if args.tool != 'rector':
+            die('the PHP level set exists for Rector only')
+        php = args.php or php_minimum(flight)
+        if not php:
+            die('no PHP version: pass --php 8.2 or run upgrade-pilot versions first')
+        path = flight.root / 'rector-php.php'
+        flag = 'php' + php.replace('.', '')
+        if path.is_file():
+            text = path.read_text(encoding='utf-8')
+            path.write_text(re.sub(r'withPhpSets\(php\d+: true\)', f'withPhpSets({flag}: true)', text), encoding='utf-8')
+        else:
+            paths = '\n'.join(f"        __DIR__ . '/{p}'," for p in extension_paths(flight))
+            path.write_text(PHP_TEMPLATE.format(paths=paths, php_flag=flag), encoding='utf-8')
+        flight.event(f'rector-php.php at PHP {php}')
+        flight.save()
+        print(f'rector-php.php written (withPhpSets({flag}: true)). Campaign: rules plan --tool rector --campaign <phase>-rector-php --config rector-php.php')
+        return
+    if args.level is None:
+        die('--level <TYPO3 major> is required for the typo3 set')
     path = flight.root / f'{args.tool}.php'
     level = str(args.level)
     if path.is_file():
@@ -381,15 +422,14 @@ def cmd_commit(args) -> None:
         die(f'{short_class(rule)} is {entry["status"]}, not applied')
     if not git_dirty(flight.root):
         die('nothing to commit')
-    if not args.message_file:
-        die('--message-file is required: write the commit message following the project rules')
-    rc, out, _ = sh('git add -A', flight.root)
-    if rc != 0:
-        die(out)
-    rc, out, _ = sh(f'git commit -q -F {args.message_file}', flight.root)
-    if rc != 0:
-        die(out)
-    sha = git_head(flight.root)
+    from .commit import create_commit, read_body
+    body = read_body(args)
+    marker = f'Applied {campaign["tool"].capitalize()} rule {rule}.'
+    if rule not in body:
+        body = (body.rstrip() + '\n\n' + marker).strip()
+    sha = create_commit(flight, args.tag, args.subject, body, args.step or name, args.step_title or f'{name}: {campaign["tool"]} rules',
+                        args.related or [], args.breaking)
+    sha = (sha or '')[:10]
     measured = [m['label'] for m in flight.log.get('measurements', []) if m['at'] >= entry.get('applied_at', '')]
     entry.update({'status': 'committed', 'commit': sha, 'committed_at': now(), 'measured': sorted(set(measured))})
     if args.note:

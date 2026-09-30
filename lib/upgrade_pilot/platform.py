@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import urllib.request
 from pathlib import Path
 
@@ -186,44 +187,60 @@ def companion_constraint(name: str, current: str, facts: dict) -> str | None:
     return companion['constraint']
 
 
-def planned_edits(flight: Flight, target: str) -> tuple[list[tuple[Path, str, str]], list[str]]:
-    """(file, old text, new text) for composer.json files and ext_emconf.php of own extensions, plus warnings."""
-    edits, warnings = [], []
+def planned_changes(flight: Flight, target: str) -> tuple[list[dict], list[tuple[Path, str, str]], list[str]]:
+    """Constraint changes for composer.json files (done through composer), ext_emconf.php edits, warnings."""
+    changes, emconf_edits, warnings = [], [], []
     facts = flight.config.get('facts', {}).get(target, {})
-    files = [flight.root / 'composer.json'] + [flight.root / ext['path'] / 'composer.json' for ext in flight.extensions() if ext['path'] != '.']
-    for path in files:
-        if not path.is_file():
+    dirs = ['.'] + [ext['path'] for ext in flight.extensions() if ext['path'] != '.']
+    for directory in dirs:
+        data = load_json(flight.root / directory / 'composer.json', None)
+        if not data:
             continue
-        text = path.read_text(encoding='utf-8')
-        new = text
-        for match in re.finditer(r'"(typo3/cms-[\w-]+)"\s*:\s*"([^"]+)"', text):
-            name, constraint = match.group(1), match.group(2)
-            if name in ('typo3/cms-composer-installers', 'typo3/cms-cli'):
-                continue
-            bumped = bump_constraint(constraint, target)
-            if bumped != constraint:
-                new = new.replace(match.group(0), match.group(0).replace(f'"{constraint}"', f'"{bumped}"'), 1)
-        for name in COMPANIONS:
-            match = re.search(rf'"{re.escape(name)}"\s*:\s*"([^"]+)"', new)
-            if not match:
-                continue
-            raised = companion_constraint(name, match.group(1), facts)
-            if raised:
-                new = new.replace(match.group(0), match.group(0).replace(f'"{match.group(1)}"', f'"{raised}"'))
-                before_eight = not any(allows(match.group(1), probe) for probe in ('8.0.0', '8.99.0', '9.0.0', '9.99.0'))
-                if name == 'helhum/typo3-console' and before_eight and vtuple(raised)[0] >= 8:
-                    warnings.append('TYPO3 Console moves to 8.0 or newer: the typo3cms binary is gone, its commands run '
-                                    'through vendor/bin/typo3. Update deployment scripts in the same change.')
-        if new != text:
-            edits.append((path, text, new))
+        for section in ('require', 'require-dev'):
+            for name, constraint in (data.get(section) or {}).items():
+                new = None
+                if name.startswith('typo3/cms-') and name not in ('typo3/cms-composer-installers', 'typo3/cms-cli'):
+                    bumped = bump_constraint(constraint, target)
+                    new = bumped if bumped != constraint else None
+                elif name in COMPANIONS:
+                    new = companion_constraint(name, constraint, facts)
+                    before_eight = not any(allows(constraint, probe) for probe in ('8.0.0', '8.99.0', '9.0.0', '9.99.0'))
+                    if new and name == 'helhum/typo3-console' and before_eight and vtuple(new)[0] >= 8:
+                        warnings.append('TYPO3 Console moves to 8.0 or newer: the typo3cms binary is gone, its commands run '
+                                        'through vendor/bin/typo3. Update deployment scripts in the same change.')
+                if new:
+                    changes.append({'dir': directory, 'section': section, 'name': name, 'old': constraint, 'new': new})
     for ext in flight.extensions():
         emconf = flight.root / ext['path'] / 'ext_emconf.php'
         if emconf.is_file():
             text = emconf.read_text(encoding='utf-8')
-            new = re.sub(r"(['\"]typo3['\"]\s*=>\s*['\"])[\d.]+-[\d.]+(['\"])", rf'\g<1>{target}.0-{target}.99\g<2>', text)
-            if new != text:
-                edits.append((emconf, text, new))
-    return edits, warnings
+            new_text = re.sub(r"(['\"]typo3['\"]\s*=>\s*['\"])[\d.]+-[\d.]+(['\"])", rf'\g<1>{target}.0-{target}.99\g<2>', text)
+            if new_text != text:
+                emconf_edits.append((emconf, text, new_text))
+    return changes, emconf_edits, warnings
+
+
+def require_commands(changes: list[dict]) -> list[str]:
+    """One composer require --no-update per composer.json and section, runtime-neutral."""
+    commands = []
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for change in changes:
+        groups.setdefault((change['dir'], change['section']), []).append(change)
+    for (directory, section), items in groups.items():
+        parts = ['composer', 'require', '--no-update']
+        if section == 'require-dev':
+            parts.append('--dev')
+        if directory != '.':
+            parts.append(f'--working-dir={directory}')
+        parts += [shlex.quote(f'{c["name"]}:{c["new"]}') for c in items]
+        commands.append(' '.join(parts))
+    return commands
+
+
+def run_composer(flight: Flight, command: str) -> tuple[int, str]:
+    """command starts with "composer": run it through the configured composer of the runtime."""
+    rc, out, _ = sh(flight.config['runtime']['composer'] + command[len('composer'):], flight.root)
+    return rc, out
 
 
 def cmd_bump(args) -> None:
@@ -231,27 +248,38 @@ def cmd_bump(args) -> None:
     target = flight.config['target']
     if target not in flight.config.get('facts', {}):
         die('run upgrade-pilot versions first, the bump uses its testing-framework and PHP facts')
-    edits, warnings = planned_edits(flight, target)
+    changes, emconf_edits, warnings = planned_changes(flight, target)
     for warning in warnings:
         print(f'WARNING: {warning}')
-    if not edits:
-        print('nothing to edit, constraints already on target')
-    for path, old, new in edits:
-        print(f'--- {flight.rel(path)}')
-        for a, b in zip(old.splitlines(), new.splitlines()):
-            if a != b:
-                print(f'  - {a.strip()}\n  + {b.strip()}')
+    commands = require_commands(changes)
+    if not commands and not emconf_edits:
+        print('nothing to change, constraints already on target')
+    for change in changes:
+        print(f'  {change["dir"]}/composer.json {change["section"]}: {change["name"]} {change["old"]} -> {change["new"]}')
+    for path, old, new in emconf_edits:
+        print(f'  {flight.rel(path)}: ' + '; '.join(f'{a.strip()} -> {b.strip()}' for a, b in zip(old.splitlines(), new.splitlines()) if a != b))
+    if commands:
+        print('composer commands:')
+        for command in commands:
+            print(f'  {command}')
     if args.mode == 'show':
         return
-    for path, _, new in edits:
+    touched = sorted({f'{c["dir"]}/composer.json'.lstrip('./') if c['dir'] != '.' else 'composer.json' for c in changes}
+                     | {flight.rel(p) for p, _, _ in emconf_edits})
+    for command in commands:
+        rc, out = run_composer(flight, command)
+        if rc != 0:
+            sh('git checkout -- ' + ' '.join(shlex.quote(t) for t in touched), flight.root)
+            die(f'{command} failed, files restored:\n{out[-2000:]}')
+    for path, _, new in emconf_edits:
         path.write_text(new, encoding='utf-8')
     composer = flight.config['runtime']['composer']
     if args.mode == 'probe':
         rc, out, log = flight.run_host(f'{composer} update -W --dry-run --no-interaction --no-audit', log_name='bump-probe')
-        for path, old, _ in edits:
-            path.write_text(old, encoding='utf-8')
+        sh('git checkout -- ' + ' '.join(shlex.quote(t) for t in touched), flight.root)
         verdict = 'resolves' if rc == 0 else 'does NOT resolve'
-        flight.log.setdefault('probes', []).append({'target': target, 'exit': rc, 'log': flight.rel(log), 'at': now()})
+        flight.log.setdefault('probes', []).append({'target': target, 'exit': rc, 'log': flight.rel(log), 'at': now(),
+                                                    'commands': commands})
         flight.event(f'bump probe to {target}: {verdict} (exit {rc})')
         flight.save()
         print(f'\nbump probe: the target graph {verdict} (exit {rc}). Files restored. Log: {flight.rel(log)}')
@@ -261,9 +289,12 @@ def cmd_bump(args) -> None:
         if rc != 0 and not problems:
             print(out[-3000:])
         raise SystemExit(0 if rc == 0 else 1)
-    flight.event(f'bump applied: {len(edits)} file(s) edited for {target}')
+    from .commit import record_command
+    for command in commands:
+        record_command(flight, command)
+    flight.event(f'bump applied for {target}: {len(commands)} composer command(s), {len(emconf_edits)} ext_emconf.php edit(s)')
     flight.save()
-    print(f'\n{len(edits)} file(s) edited. Now run: {composer} update -W   (read "Problem 1" carefully if it fails)')
+    print(f'\napplied and recorded for the commit. Next: upgrade-pilot composer update -W   (read "Problem 1" carefully if it fails)')
 
 
 # -- local backup ------------------------------------------------------------------

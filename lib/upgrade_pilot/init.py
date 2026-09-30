@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import glob
+import json
 import re
+import shlex
 import shutil
 from pathlib import Path
 
@@ -61,14 +63,142 @@ def detect_extensions(root: Path, composer: dict) -> list[dict]:
     return list(found.values())
 
 
-def detect_runtime(root: Path, exec_override: str | None, composer_override: str | None) -> dict:
-    if exec_override:
-        return {'kind': 'custom', 'exec': exec_override, 'composer': composer_override or exec_override.replace('{cmd}', 'composer')}
-    if (root / '.ddev' / 'config.yaml').is_file():
-        return {'kind': 'ddev', 'exec': 'ddev exec {cmd}', 'composer': composer_override or 'ddev composer'}
+DIRENV_STATES = {'0': 'allowed', 'true': 'allowed', '1': 'not allowed yet', 'false': 'not allowed yet', '2': 'denied'}
+
+
+def envrc_dir(root: Path) -> Path | None:
+    """direnv applies an .envrc of the project folder or of a parent. Look in the root and one level up."""
+    for candidate in (root, root.parent):
+        if (candidate / '.envrc').is_file():
+            return candidate
+    return None
+
+
+ANSI = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def first_line(text: str, prefer: str | None = None) -> str | None:
+    """The meaningful line of a tool's output: the one containing prefer, else the last one. No colours, no direnv noise."""
+    lines = [ANSI.sub('', line).strip() for line in text.strip().splitlines()]
+    lines = [line for line in lines if line and not line.startswith('direnv:')]
+    if prefer:
+        match = next((line for line in lines if prefer in line), None)
+        if match:
+            return match
+    return lines[-1] if lines else None
+
+
+def probe_direnv(root: Path) -> dict:
+    """Is an .envrc there, is direnv installed, is the .envrc allowed, do php and composer work inside it?"""
+    directory = envrc_dir(root)
+    info = {'envrc': str(directory / '.envrc') if directory else None, 'installed': bool(shutil.which('direnv')),
+            'allowed': None, 'php': None, 'composer': None, 'usable': False}
+    if not directory or not info['installed']:
+        return info
+    prefix = f'direnv exec {shlex.quote(str(directory))}'
+    # The exit code of "direnv exec" does not tell: a denied .envrc is skipped silently. Ask direnv status.
+    rc, out, _ = sh('direnv status', directory)
+    match = re.search(r'^Found RC allowed (\S+)', ANSI.sub('', out), re.M)
+    state = DIRENV_STATES.get(match.group(1), f'unknown ({match.group(1)})') if match else 'unknown'
+    info['state'] = state
+    info['allowed'] = state == 'allowed'
+    if not info['allowed']:
+        info['error'] = f'{info["envrc"]} is {state}'
+        return info
+    rc, out, _ = sh(f"{prefix} php -r 'echo PHP_VERSION;'", root)
+    info['php'] = first_line(out) if rc == 0 else None
+    rc, out, _ = sh(f'{prefix} composer --version --no-ansi', root)
+    info['composer'] = first_line(out, 'Composer') if rc == 0 else None
+    info['usable'] = bool(info['php'] and info['composer'])
+    info['exec'] = f'{prefix} sh -c {{cmd}}'
+    info['composer_cmd'] = f'{prefix} composer'
+    return info
+
+
+def probe_local() -> dict:
+    info = {'php': None, 'composer': None}
     if shutil.which('php'):
+        rc, out, _ = sh("php -r 'echo PHP_VERSION;'", Path('.'))
+        info['php'] = first_line(out) if rc == 0 else None
+    if shutil.which('composer'):
+        rc, out, _ = sh('composer --version --no-ansi', Path('.'))
+        info['composer'] = first_line(out, 'Composer') if rc == 0 else None
+    return info
+
+
+def commit_evidence(root: Path, limit: int = 200) -> dict:
+    """How this repository writes commit messages, to suggest a commit style."""
+    rc, out, _ = sh(f'git log -n {limit} --format=%s%x1f%b%x1e', root, merge=False)
+    subjects, bodies = [], []
+    for record in out.split('\x1e'):
+        if '\x1f' in record:
+            subject, body = record.split('\x1f', 1)
+            subjects.append(subject.strip())
+            bodies.append(body)
+    tag = re.compile(r'^\[(!!!|TASK|BUGFIX|FEATURE|DOCS|SECURITY|CLEANUP|WIP|RELEASE)\]', re.I)
+    keyed = re.compile(r'^(?:\[[^\]]+\]\s*)+([A-Z][A-Z0-9]+-\d+):')
+    keys: dict[str, int] = {}
+    for subject in subjects:
+        match = keyed.match(subject)
+        if match:
+            key = match.group(1).split('-')[0]
+            keys[key] = keys.get(key, 0) + 1
+    joined = '\n'.join(bodies)
+    return {
+        'commits_read': len(subjects),
+        'typo3_tags': sum(1 for s in subjects if tag.match(s)),
+        'issue_key_in_subject': sum(keys.values()),
+        'project_keys': dict(sorted(keys.items(), key=lambda kv: -kv[1])),
+        'footers': {name: len(re.findall(rf'^{name}:', joined, re.M)) for name in ('Resolves', 'Releases', 'Related', 'Fixes', 'Refs')},
+        'examples': subjects[:5],
+    }
+
+
+def remote_host(root: Path) -> str | None:
+    url = git(root, 'remote', 'get-url', 'origin')
+    match = re.match(r'^(?:https?://(?:[^@/]+@)?|git@|ssh://git@)([^/:]+)', url or '')
+    return match.group(1) if match else None
+
+
+def detect(root: Path) -> dict:
+    return {
+        'root': str(root),
+        'ddev': {'config': (root / '.ddev' / 'config.yaml').is_file(), 'installed': bool(shutil.which('ddev'))},
+        'direnv': probe_direnv(root),
+        'local': probe_local(),
+        'git_remote_host': remote_host(root),
+        'commit_style_evidence': commit_evidence(root),
+        'agent_instructions': [name for name in ('CLAUDE.md', 'AGENTS.md', '.claude/CLAUDE.md', 'CONTRIBUTING.md') if (root / name).is_file()],
+    }
+
+
+def detect_runtime(root: Path, choice: str | None, exec_override: str | None, composer_override: str | None) -> dict:
+    """ddev, direnv, local or custom. An explicit choice wins, otherwise ddev > usable direnv > local PHP."""
+    if exec_override or choice == 'custom':
+        if not exec_override:
+            die('--runtime custom needs --exec "<wrapper with {cmd}>" and --composer')
+        return {'kind': 'custom', 'exec': exec_override, 'composer': composer_override or exec_override.replace('{cmd}', 'composer')}
+    direnv = probe_direnv(root) if choice in (None, 'direnv') else {}
+    if choice == 'ddev' or (choice is None and (root / '.ddev' / 'config.yaml').is_file()):
+        if not shutil.which('ddev'):
+            die('ddev is not installed')
+        return {'kind': 'ddev', 'exec': 'ddev exec {cmd}', 'composer': composer_override or 'ddev composer'}
+    if choice == 'direnv' or (choice is None and direnv.get('usable')):
+        if not direnv.get('envrc'):
+            die('no .envrc in the project folder or one level above')
+        if not direnv.get('installed'):
+            die('an .envrc exists, but direnv is not installed')
+        if not direnv.get('allowed'):
+            die(f'{direnv["envrc"]} is {direnv.get("state", "not allowed")}. Review it, then run "direnv allow" yourself. '
+                'The pilot never allows an .envrc.')
+        if not direnv.get('usable'):
+            die(f'php or composer does not work inside the direnv environment (php: {direnv.get("php")}, composer: {direnv.get("composer")})')
+        return {'kind': 'direnv', 'envrc': direnv['envrc'], 'exec': direnv['exec'], 'composer': composer_override or direnv['composer_cmd']}
+    if choice in (None, 'local') and shutil.which('php'):
+        if not shutil.which('composer') and not composer_override:
+            die('local PHP found, but no composer on PATH. Pass --composer or choose another runtime')
         return {'kind': 'local', 'exec': '{cmd}', 'composer': composer_override or 'composer'}
-    die('cannot tell where PHP runs. Pass --exec "docker compose exec -T php sh -c {cmd}" (or similar) and --composer')
+    die('cannot tell where PHP runs. Choose --runtime ddev|direnv|local, or --runtime custom with --exec and --composer')
     return {}
 
 
@@ -143,10 +273,39 @@ def stage_helpers(flight: Flight) -> None:
         shutil.copy2(helper, target / helper.name)
 
 
+COMMIT_STYLES = ('typo3', 'youtrack', 'custom')
+ISSUE_MODES = ('none', 'single', 'per-step', 'placeholder')
+
+
+def commit_policy(args) -> dict:
+    style = args.commit_style
+    if style == 'custom' and not args.commit_template:
+        die('--commit-style custom needs --commit-template, e.g. "[{tag}] {ref}: {subject}"')
+    if args.issue_mode in ('single', 'per-step') and not args.issue:
+        die(f'--issue-mode {args.issue_mode} needs --issue <REF> (the ticket, or the parent ticket for per-step)')
+    if style == 'youtrack' and args.issue_mode == 'none':
+        die('the youtrack style puts an issue reference into every subject: choose an --issue-mode other than none')
+    return {
+        'style': style,
+        'template': args.commit_template,
+        'tracker': args.tracker,
+        'project_key': args.project_key,
+        'issue_mode': args.issue_mode,
+        'issue': args.issue,
+        'subject_max': 52,
+        'body_wrap': 72,
+    }
+
+
 def run(args) -> None:
     start = Path(args.project or '.').resolve()
     top = git(start, 'rev-parse', '--show-toplevel')
     root = Path(top) if top else start
+    if args.detect:
+        print(json.dumps(detect(root), indent=2))
+        return
+    if not args.target:
+        die('--target is required (or use --detect to see what the project offers)')
     if not (root / 'composer.json').is_file():
         die(f'{root} has no composer.json. Composer-mode projects and extensions only.')
     if (root / STATE_DIR / 'config.json').is_file() and not args.force:
@@ -163,7 +322,7 @@ def run(args) -> None:
         die('--target must look like 13.4')
 
     flight = Flight(root)
-    runtime = detect_runtime(root, args.exec, args.composer)
+    runtime = detect_runtime(root, args.runtime, args.exec, args.composer)
     extensions = [
         {'key': Path(p).name, 'path': p, 'package': None} for p in args.ext
     ] if args.ext else detect_extensions(root, composer)
@@ -185,6 +344,9 @@ def run(args) -> None:
         },
         'runtime': runtime,
         'gates': args.gates,
+        'commit': commit_policy(args),
+        'allow_push': args.allow_push,
+        'rector_sets': ['typo3'] + (['php'] if args.php_set else []),
         'extensions': extensions,
         'tests': detect_tests(root),
         'tools': {
@@ -225,11 +387,18 @@ def run(args) -> None:
         if not destination.exists():
             text = template.read_text(encoding='utf-8')
             destination.write_text(text.replace('{source}', source).replace('{target}', target), encoding='utf-8')
+    from .context import register
+    for ref in args.context:
+        register(flight, ref)
     flight.event(f'Flight opened: TYPO3 {installed or source} -> {target}, base branch {base}')
     flight.save()
 
     print(f'Flight opened in {flight.rel(flight.dir)}/ (git-excluded)')
     print(f'  TYPO3 {installed or source} -> {target}   runtime: {runtime["kind"]}   gates: {args.gates}')
+    policy = flight.config['commit']
+    print(f'  commits: style {policy["style"]}, issues {policy["issue_mode"]}' + (f' ({policy["issue"]})' if policy.get('issue') else '')
+          + f', push {"allowed" if args.allow_push else "blocked while the flight is open"}'
+          + f', rector sets: {" + ".join(flight.config["rector_sets"])}')
     print(f'  base branch {base}, preflight branch {flight.config["branches"]["preflight"]}, flight branch {flight.config["branches"]["flight"]}')
     print('  own extensions:')
     for ext in extensions:
@@ -239,6 +408,8 @@ def run(args) -> None:
         print(f'    - {suite:<11} [{spec["where"]}] {spec["cmd"]}')
     if not flight.config['tests']:
         print('    - none detected. Configure tests before the baseline measurement.')
+    if args.context:
+        print(f'  context to read first: {", ".join(args.context)} (upgrade-pilot context list)')
     missing = [name for name, version in flight.config['installed_tools'].items() if not version and name not in ('testing-framework', 'typo3-console')]
     if missing:
         print('  tooling not installed: ' + ', '.join(missing))

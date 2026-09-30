@@ -43,5 +43,17 @@ class GuardTest(unittest.TestCase):
                 self.assertIsNone(verdict(command, 'main', branch))
 
 
+class NoPushTest(unittest.TestCase):
+    def test_every_push_blocked_without_allow_push(self):
+        for command in ('git push -u origin upgrade/13.4', 'git push', 'gh pr create --fill', 'glab mr create'):
+            with self.subTest(command=command):
+                self.assertIsNotNone(verdict(command, 'main', 'upgrade/13.4', allow_push=False))
+
+    def test_other_commands_pass(self):
+        for command in ('git commit -m x', 'git log', 'gh pr list', 'git fetch origin'):
+            with self.subTest(command=command):
+                self.assertIsNone(verdict(command, 'main', 'upgrade/13.4', allow_push=False))
+
+
 if __name__ == '__main__':
     unittest.main()

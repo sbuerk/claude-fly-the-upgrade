@@ -3,7 +3,8 @@
 
 Blocks merge, commit, rebase, cherry-pick, am, revert, ref moves and pushes
 that target the base branch recorded in .upgrade-pilot/config.json, and
-`gh pr merge`. A seatbelt for mistakes, not a security boundary.
+`gh pr merge`. When the flight was opened without --allow-push, every push
+(and creating a pull or merge request) is blocked. A seatbelt for mistakes, not a security boundary.
 Disable per flight with "guard": false in config.json.
 """
 
@@ -54,10 +55,14 @@ def git_args(words):
     return (rest[0], rest[1:]) if rest else (None, [])
 
 
-def verdict(command: str, base: str, branch: str):
+def verdict(command: str, base: str, branch: str, allow_push: bool = True):
     for words in segments(command):
         if words[:3] == ['gh', 'pr', 'merge']:
             return 'gh pr merge would merge into a protected branch during an open flight'
+        if not allow_push and (words[:3] == ['gh', 'pr', 'create'] or words[:2] == ['glab', 'mr'] and 'create' in words[2:3]):
+            return 'creating a pull or merge request pushes the branch, and this flight does not push'
+        if not allow_push and git_args(words)[0] == 'push':
+            return 'git push: this flight commits locally and pushes nothing (chosen at init)'
         sub, args = git_args(words)
         if not sub:
             continue
@@ -107,7 +112,7 @@ def main() -> None:
     if config.get('guard') is False or log.get('phase') == 'landed':
         return
     base = config.get('base_branch') or 'main'
-    reason = verdict(command, base, current_branch(root))
+    reason = verdict(command, base, current_branch(root), bool(config.get('allow_push', True)))
     if reason:
         print(json.dumps({'hookSpecificOutput': {
             'hookEventName': 'PreToolUse',

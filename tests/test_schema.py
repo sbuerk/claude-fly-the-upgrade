@@ -55,7 +55,7 @@ class BumpTest(unittest.TestCase):
     def run_bump(self, console_constraint):
         import json
         import tempfile
-        from upgrade_pilot.platform import planned_edits
+        from upgrade_pilot.platform import planned_changes, require_commands
 
         class FakeFlight:
             config = {'facts': {'13.4': FACTS}}
@@ -71,18 +71,18 @@ class BumpTest(unittest.TestCase):
             (root / 'composer.json').write_text(json.dumps({'require': {
                 'typo3/cms-core': '^12.4', 'helhum/typo3-console': console_constraint,
             }, 'require-dev': {'typo3/testing-framework': '^8.0'}}, indent=4))
-            edits, warnings = planned_edits(FakeFlight(root), '13.4')
-            return json.loads(edits[0][2]), warnings
+            changes, _, warnings = planned_changes(FakeFlight(root), '13.4')
+            return {c['name']: c['new'] for c in changes}, warnings, require_commands(changes)
 
     def test_bridge_constraint_is_kept_without_warning(self):
-        composer, warnings = self.run_bump('^8.3')
-        self.assertEqual('^13.4', composer['require']['typo3/cms-core'])
-        self.assertEqual('^8.3', composer['require']['helhum/typo3-console'])
-        self.assertEqual('^9', composer['require-dev']['typo3/testing-framework'])
+        changes, warnings, commands = self.run_bump('^8.3')
+        self.assertEqual({'typo3/cms-core': '^13.4', 'typo3/testing-framework': '^9'}, changes)
         self.assertEqual([], warnings)
+        self.assertEqual(["composer require --no-update 'typo3/cms-core:^13.4'",
+                          "composer require --no-update --dev 'typo3/testing-framework:^9'"], commands)
 
     def test_console_seven_is_raised_with_binary_warning(self):
-        composer, warnings = self.run_bump('^7.1')
-        self.assertEqual('^9', composer['require']['helhum/typo3-console'])
+        changes, warnings, _ = self.run_bump('^7.1')
+        self.assertEqual('^9', changes['helhum/typo3-console'])
         self.assertEqual(1, len(warnings))
         self.assertIn('typo3cms', warnings[0])

@@ -24,8 +24,8 @@ repeat:
   upgrade-pilot rules apply --campaign <name>                  # exactly one rule, the next pending one
   review (below)
   upgrade-pilot measure --label "<tool>: <RuleShortName>"
-  write the commit message to .upgrade-pilot/tmp/commit-msg.txt
-  upgrade-pilot rules commit --campaign <name> --message-file .upgrade-pilot/tmp/commit-msg.txt [--note "..."]
+  write the body to .upgrade-pilot/tmp/body.txt
+  upgrade-pilot rules commit --campaign <name> --tag TASK --subject "<what changed>" --body-file .upgrade-pilot/tmp/body.txt [--note "..."]
   upgrade-pilot rules plan --campaign <name>                   # rules interact, re-plan every time
 until plan reports 0 rules
 ```
@@ -52,10 +52,10 @@ Compare the measurement with the previous one in `.upgrade-pilot/FLIGHT-LOG.md`.
 
 ## Commit message
 
-Follow the project's commit rules. Subject says what changed in the code, not which tool ran. Copy changelog references from the `@changelog` link `apply` printed, the scanner output or a file name in the core's `Documentation/Changelog`, never type them from memory. Body names the tool and full rule class, the changelog reference, and any manual completion or data migration you added. TYPO3 Core style example:
+`rules commit` renders the style chosen at init (TYPO3 Core or YouTrack style, or a custom template), adds the issue reference of the step (default step: the campaign, so one issue per campaign in per-step and placeholder mode), `Related:` lines, and appends `Applied <Tool> rule <class>.` to the body when you did not name the rule. Use `--dry-run` on `upgrade-pilot commit` to preview the style. Subject says what changed in the code, not which tool ran. Copy changelog references from the `@changelog` link `apply` printed, the scanner output or a file name in the core's `Documentation/Changelog`, never type them from memory. Body names the tool and full rule class, the changelog reference, and any manual completion or data migration you added. TYPO3 Core style example:
 
 ```
-[TASK] Migrate QueryBuilder::execute() calls
+[TASK] Migrate QueryBuilder::execute() calls        (YouTrack style: [TASK] PRJ-123: Migrate ...)
 
 Replace the deprecated QueryBuilder::execute() with executeQuery()
 and executeStatement().
@@ -64,6 +64,17 @@ Applied Rector rule
 Ssch\TYPO3Rector\TYPO312\v0\MigrateQueryBuilderExecuteRector.
 Changelog: Deprecation-96972-DeprecateQueryBuilderexecute
 ```
+
+## Sets: TYPO3 first, PHP as its own campaign
+
+The TYPO3 level set (`rector.php`, `fractor.php`) is the upgrade. If the flight was opened with `--php-set`, the PHP level set runs afterwards as a separate campaign with its own configuration, still one rule per commit:
+
+```
+upgrade-pilot rules config --tool rector --set php            # rector-php.php, minimum PHP of the target core
+upgrade-pilot rules plan --tool rector --campaign <phase>-rector-php --config rector-php.php
+```
+
+It modernises syntax the target's minimum PHP allows, so it belongs on the flight branch (or on the pre-flight branch only when production already runs that PHP version). Skip rules that only restyle code without a reason for this upgrade, and say so with `rules skip --reason`.
 
 ## Finish
 
