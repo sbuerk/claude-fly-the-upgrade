@@ -6,6 +6,8 @@ All notable changes to this plugin. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-30
+
 ### Added
 
 - Initialization asks how to run things: `init --detect` reports ddev, direnv
@@ -29,6 +31,8 @@ All notable changes to this plugin. The format follows
 - Reports per gate and final: developer report (English), PM/customer report
   (English and German), with summaries written into `notes/`.
 - `docs/PROCESS.md`: the full process guide.
+- README: how to update the plugin, and upgrade notes per version for flights
+  opened with an earlier version.
 - The guard blocks every push and pull or merge request creation while a flight
   is open, unless `--allow-push` was chosen.
 
@@ -100,6 +104,7 @@ All notable changes to this plugin. The format follows
   ddev snapshots, upgrade report.
 - Verified by a test flight TYPO3 12.4.45 to 13.4.35.
 
-[Unreleased]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.2.0...HEAD
+[Unreleased]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.3.0...HEAD
+[0.3.0]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.2.0...fly-the-upgrade--v0.3.0
 [0.2.0]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.1.0...fly-the-upgrade--v0.2.0
 [0.1.0]: https://github.com/sbuerk/claude-fly-the-upgrade/releases/tag/fly-the-upgrade--v0.1.0
