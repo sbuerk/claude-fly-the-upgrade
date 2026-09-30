@@ -25,6 +25,9 @@ CLI modules: `core` (state, runtime wrapper, git), `init` (detection),
 `contacts` (contact points vs tests), `platform` (versions, companion packages,
 bump, snapshots), `schema` (schema tooling detection, dry run, converging apply),
 `deps` (third-party packages that move, their notes by convention, new wizards),
+`commit` (message rendering, recorded commands, composer fold, issues), `gitops`
+(plumbing history rewrites), `context` (pre-collected information), `reports`
+(developer and PM reports, en and de),
 `changelog` (fetch, match), `rules` (Rector/Fractor campaigns), `render`
 (flight log and report), `cli` (argument parsing).
 

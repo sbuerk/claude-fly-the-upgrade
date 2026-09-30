@@ -14,6 +14,9 @@ the measurable work, records every step, and stops where a human has to decide.
 | **2 Flight** | Branch, platform check, core and tooling raised in one composer transaction, Rector and Fractor for the *target* one rule per commit, scan again, red tests worked one at a time, **schema previewed and applied until it converges**, upgrade wizards verified on data, caches | Cleared to hand over |
 | **3 Post-flight** | Sweep again with the new core's rules, local deprecation-log crawl, destructive schema changes listed for after the rollback window, ferry equipment removed, constraints re-pinned, upgrade report and debrief | Debriefed |
 
+> **The complete process, step by step, with every command, what each step
+> produces and where a person has to look: [docs/PROCESS.md](docs/PROCESS.md).**
+
 Every checklist answer, measurement, scan and refactoring rule lands in a flight
 log inside the project. Nothing is estimated.
 
@@ -21,6 +24,7 @@ log inside the project. Nothing is estimated.
 
 ## Contents
 
+- [The full process guide](docs/PROCESS.md)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Prepare the project](#prepare-the-project)
@@ -52,7 +56,7 @@ In the project you upgrade:
 
 - a **composer-mode** TYPO3 project or TYPO3 extension (classic mode is not supported)
 - git, with the upgrade starting from a clean working tree
-- PHP where the project runs it: [ddev](https://ddev.com/) is detected
+- PHP and composer where the project runs them: [ddev](https://ddev.com/), [direnv](https://direnv.net/) (an allowed `.envrc` in the project or one folder above), local PHP, or any container. All are detected
   automatically, a local PHP works too, any other container can be described
   (see [Configuration](#configuration))
 - a test suite that can be started with one command per suite, ideally the
@@ -144,20 +148,36 @@ Open Claude Code in the project root and run:
 /fly-the-upgrade:upgrade 13.4
 ```
 
-(or just say *"upgrade this project to TYPO3 13.4"*). Claude asks who decides
-the gates:
+(or just say *"upgrade this project to TYPO3 13.4"*). Claude first looks at the
+project (`upgrade-pilot init --detect`: ddev, direnv, local PHP, how your commit
+messages look) and then asks you:
 
-- **human** (default): Claude stops at the end of every phase, shows the
-  evidence and asks you for Go or No-Go.
-- **auto**: Claude decides by the written gate criteria. Human-only checklist
-  lines are still handed over to you, never ticked off. Use it for rehearsals
-  and unattended runs.
+- **Runtime**: ddev, direnv or local PHP. An `.envrc` that is not allowed is
+  reported, never allowed on your behalf.
+- **Commit style**: TYPO3 Core style (`[TAG] Subject`, issue references as
+  `Related:` lines, no Resolves/Releases), YouTrack style
+  (`[TAG] PRJ-123: Subject` with `Related:` lines), or your own template.
+- **Issue references**: none, one reference for everything, a parent issue with
+  one issue per step, or `{ISSUE-01}` placeholders collected in `ISSUES.md`
+  that are replaced in the commits once the real issues exist.
+- **Gates**: **human** (default, Claude stops at every gate and asks you for
+  Go or No-Go) or **auto** (Claude decides by the written criteria, human-only
+  lines are still handed over to you).
+- **Extras**: the PHP level set as an extra Rector campaign, and pre-collected
+  context: issues with a pre-analysis, customer requirements, notes. Claude reads
+  them first (issues through whatever tracker access the session has) and keeps a
+  digest in the flight.
 
-It then runs `upgrade-pilot init`, which detects the installed TYPO3 version,
-the runtime (ddev, local PHP), your own extensions (path repositories, classic
+It then runs `upgrade-pilot init` with your answers, which also detects the
+installed TYPO3 version, your own extensions (path repositories, classic
 extensions, or the repository itself when it is an extension) and the test
 commands. **Check what it prints.** A wrong test command poisons every
 measurement.
+
+Every commit goes to local pilot branches, in your style, in small logical
+units. Composer files change only through composer (or `jq`) commands, and the
+commit lists them in a `Used command(s):` block. **Nothing is pushed**: the
+plugin blocks pushes while the flight is open.
 
 ### 2. Pre-flight (on a branch, still on the current version)
 
@@ -217,10 +237,16 @@ from the support calendar, then `UPGRADE-REPORT.md` with the debrief.
 
 ### 5. Land it yourself
 
-The pilot never merges, rebases or pushes into your base branch, and its hook
-blocks attempts to while a flight is open. Review the two branches, push them,
-open merge or pull requests and deploy the way your team does. The pre-flight
-branch can go out first, on the current version.
+The pilot never merges, rebases or pushes, and its hook blocks attempts to
+while a flight is open. With placeholder issues, fill in the real numbers in
+`ISSUES.md` and let the pilot run `upgrade-pilot issues apply` before anything
+is pushed. Then review the two branches, push them, open merge or pull
+requests and deploy the way your team does. The pre-flight branch can go out
+first, on the current version.
+
+At every gate and at the end you get reports: a developer report in English
+and a project-manager/customer report in English and German
+(`.upgrade-pilot/reports/`). See [Reports](docs/PROCESS.md#9-reports-and-summaries).
 
 ### Resuming, and asking where you are
 
@@ -242,7 +268,10 @@ switches.
 | File | What |
 |---|---|
 | `FLIGHT-LOG.md` | The checklist with every answer, gates, measurement table, scans, TCA checks, rule campaigns, journal. Re-rendered after every change |
+| `reports/` | Per gate and final: `<phase>-dev.en.md`, `<phase>-pm.en.md`, `<phase>-pm.de.md` |
 | `UPGRADE-REPORT.md` | Key stages, every measurement, campaigns (generated code, skipped rules), commits of both branches, gates, human handoffs, accepted risks, debrief |
+| `ISSUES.md` | Per-step issues or placeholders with their commits |
+| `context/` | Digests of pre-collected information |
 | `QRH.md`, `MEL.md`, `BRIEFING.md`, `DEBRIEF.md` | Written during the flight, hand them to your team |
 | `config.json` | How things run: runtime wrapper, test commands, own extensions, branches, gate mode, fetched version facts |
 | `flightlog.json` | The machine-readable log the CLI keeps |
@@ -360,10 +389,17 @@ and is used by `rule-by-rule` for long or unclear diffs.
 | Option | Default | Use |
 |---|---|---|
 | `--target 13.4` | required | Target version, `major.minor` |
+| `--detect` | | Only print what the project offers, as JSON |
+| `--runtime ddev\|direnv\|local\|custom` | detected | Where PHP and composer run |
+| `--commit-style typo3\|youtrack\|custom` | `typo3` | Commit message style, `--commit-template "[{tag}] {ref}: {subject}"` for custom |
+| `--issue-mode none\|single\|per-step\|placeholder` | `none` | How commits reference issues, with `--issue <REF>` (the issue, or the parent), `--tracker`, `--project-key` |
+| `--context <REF>` | | Pre-collected information: issue key, URL or file, repeatable |
+| `--php-set` | off | Extra Rector campaign with the PHP level set |
+| `--allow-push` | off | Do not block pushes during the flight |
 | `--gates human\|auto` | `human` | Who decides the gates |
 | `--branch-prefix` | `upgrade` | Branches `<prefix>/preflight-<source>` and `<prefix>/<target>` |
 | `--ext <path>` | detected | Own extension paths, repeatable |
-| `--exec '<wrapper with {cmd}>'` | detected | How to run PHP commands, for runtimes other than ddev or local PHP |
+| `--exec '<wrapper with {cmd}>'` | detected | How to run PHP commands in a custom runtime |
 | `--composer '<command>'` | detected | Composer on the host |
 
 Example for docker compose:
@@ -386,7 +422,11 @@ plugin is enabled). You can use it directly as well:
 
 | Command | Does |
 |---|---|
-| `init --target <v>` | Detect project, runtime, own extensions, tests. Open the flight |
+| `init --target <v>` / `init --detect` | Detect project, runtime, own extensions, tests, commit style. Open the flight |
+| `context list\|add` | Pre-collected context and its digests |
+| `commit --tag --subject --step` | Commit all changes in the configured style, with issue reference and recorded commands. `--into-composer-commit` folds composer-only changes into the branch's composer commit |
+| `composer <args>` / `run -- <cmd>` | Run composer (in the runtime) or a host command such as `jq`, recorded for the next commit |
+| `issues list\|set\|apply` | Issue references: register per-step issues, replace placeholders in the pilot branches |
 | `status [-v]` | Phase, gates, open items and how to answer them, last measurements, campaigns |
 | `item <id> done\|no\|na\|handoff\|open --note --evidence` | Answer a checklist line. `no` and `na` need a reason |
 | `gate <phase> show\|go\|nogo --note` | Gate criteria and blockers, or record the decision |
@@ -401,7 +441,7 @@ plugin is enabled). You can use it directly as well:
 | `changelog fetch\|match` | Fetch the target's core changelog, match it against own code |
 | `rules config\|plan\|next\|apply\|commit\|skip\|list` | Rector and Fractor campaigns, one rule at a time |
 | `snapshot take\|restore\|list` | Local database snapshots (ddev) |
-| `report` | Render `UPGRADE-REPORT.md` |
+| `report --phase preflight\|flight\|postflight\|final\|all` | Developer (en) and PM/customer (en, de) reports |
 
 `upgrade-pilot <command> --help` shows every option.
 
@@ -411,9 +451,13 @@ plugin is enabled). You can use it directly as well:
 - Human-only work (production backup, freeze, editor smoke test, staging) is
   recorded as a handoff with instructions, never marked done by the pilot.
 - A hook blocks `git merge`, `commit`, `rebase`, `cherry-pick`, `pull` and
-  `revert` on the base branch, pushes to it, moving or deleting it, and
-  `gh pr merge`, while a flight is open. It is a seatbelt, not a security
+  `revert` on the base branch, moving or deleting it, `gh pr merge`, and, unless
+  the flight was opened with `--allow-push`, every `git push` and pull or merge
+  request creation, while a flight is open. It is a seatbelt, not a security
   boundary.
+- History is only rewritten locally and before anything is pushed (issue
+  placeholders, folding composer changes), with authors and dates kept.
+- An `.envrc` is never allowed by the pilot.
 - Tests are never deleted, skipped or weakened to reach green. Fixtures that
   model production data are only changed the way the upgrade wizard changes the
   production data, and the commit says so.
@@ -478,6 +522,7 @@ for post-flight.
 | `lib/php/tca-migrations.php` | Headless TCA migration check, copied into the project at run time |
 | `data/checklist.json` | The three-phase checklist, with who can answer each line |
 | `data/templates/` | Starting points for QRH, MEL and briefing |
+| `docs/PROCESS.md` | The full process guide |
 | `tests/` | Unit tests for parsers, constraint matching and the guard |
 | `AGENTS.md`, `.claude/CLAUDE.md` | Rules for changing this repository, loaded by coding agents |
 | `.github/workflows/ci.yml` | Unit tests on Python 3.9 and 3.12, plugin validation, PHP lint |

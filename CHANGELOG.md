@@ -8,6 +8,30 @@ All notable changes to this plugin. The format follows
 
 ### Added
 
+- Initialization asks how to run things: `init --detect` reports ddev, direnv
+  (an `.envrc` in the project or one folder up, its `direnv status`, php and
+  composer inside it) and local PHP, plus the commit style of the repository.
+  New runtime `direnv`, chosen with `--runtime`. An `.envrc` is never allowed by
+  the pilot.
+- Commit policy chosen at init: TYPO3 Core style without Resolves/Releases,
+  YouTrack style `[TAG] PRJ-123: Subject` with `Related:` lines, or a custom
+  template. Issue modes: none, single reference, parent plus one issue per step,
+  or `{ISSUE-nn}` placeholders with `ISSUES.md` and `issues apply`, which
+  replaces them in the pilot branches through a local history rewrite.
+- `upgrade-pilot commit`, `composer` and `run`: commits in the configured style,
+  composer files only changed by recorded commands, listed in a
+  `Used command(s):` block. `--into-composer-commit` folds composer-only changes
+  into the branch's composer commit.
+- `--context` at init and `upgrade-pilot context`: pre-collected issues,
+  documents and notes, read and digested before the pre-flight.
+- `--php-set` and `rules config --set php`: the Rector PHP level set as its own
+  campaign, one rule per commit.
+- Reports per gate and final: developer report (English), PM/customer report
+  (English and German), with summaries written into `notes/`.
+- `docs/PROCESS.md`: the full process guide.
+- The guard blocks every push and pull or merge request creation while a flight
+  is open, unless `--allow-push` was chosen.
+
 - `upgrade-pilot deps list|docs`: third-party packages that move with the bump
   (from the bump probe, or from the old and new composer.lock), and what their
   maintainers documented between the installed and the target release. Found by
@@ -21,6 +45,16 @@ All notable changes to this plugin. The format follows
   pre-flight turns dependency breaking entries and wizards into QRH rows, the
   flight re-reads them for the versions really installed and expects their
   wizards in step 8.
+
+### Changed
+
+- `bump` changes composer files through `composer require --no-update` commands
+  instead of editing them, and records the commands for the commit.
+- `rules commit` renders the configured commit style (`--subject`, `--body`,
+  `--step`) instead of taking a message file.
+- `report` writes the reports per phase (`--phase`), `UPGRADE-REPORT.md` is the
+  final developer report.
+- direnv status lines are filtered from captured tool output.
 
 ## [0.2.0] - 2026-09-29
 
