@@ -16,6 +16,11 @@ the measurable work, records every step, and stops where a human has to decide.
 
 > **The complete process, step by step, with every command, what each step
 > produces and where a person has to look: [docs/PROCESS.md](docs/PROCESS.md).**
+>
+> **Only third-party packages move, not the core? Update or just check selected
+> packages (one, a list, or `vendor/prefix-*`), including every place where your
+> sitepackage or local extensions modify them:
+> [docs/SCENARIO-PACKAGES.md](docs/SCENARIO-PACKAGES.md).**
 
 Every checklist answer, measurement, scan and refactoring rule lands in a flight
 log inside the project. Nothing is estimated.
@@ -32,6 +37,8 @@ log inside the project. Nothing is estimated.
 - [Upgrade a project, step by step](#upgrade-a-project-step-by-step)
 - [What you get: the flight log](#what-you-get-the-flight-log)
 - [Third-party changelogs and upgrade notes](#third-party-changelogs-and-upgrade-notes)
+- [Your modifications of third-party packages](#your-modifications-of-third-party-packages)
+- [Selected packages only: update or check](#selected-packages-only-update-or-check)
 - [Database schema and TYPO3 Console](#database-schema-and-typo3-console)
 - [Using parts of the plugin on their own](#using-parts-of-the-plugin-on-their-own)
 - [Configuration](#configuration)
@@ -397,6 +404,48 @@ installed and expects the wizards in step 8.
 "Nothing documented found" is reported as such: the maintainer's project
 page then becomes a task for a person.
 
+For TYPO3 extensions, the **rendered manual on docs.typo3.org** is read as
+well: pages of the target's manual that are new against the installed
+version's manual, as Markdown where the host publishes it (found through
+`toc.json` or `objects.inv.json`, as its `llms.txt` asks). New upgrade wizards
+that their package keeps out of the service container are marked **opt-in**,
+with their class documentation: the core never offers them, the project
+decides.
+
+## Your modifications of third-party packages
+
+Sitepackages and local extensions replace classes of third-party extensions,
+listen to their events, copy their templates and override their labels. None
+of that appears in the package's changelog, and all of it can break when the
+package moves. `upgrade-pilot deps touchpoints --verify` finds these places
+from each package's own declarations (namespaces, extension key, tables,
+plugins, templates, labels) in own extensions, sitepackages, `config/` and
+composer patches, and checks each against the target version: XCLASS and
+subclass signatures, final classes, removed classes and events, changed
+original templates, removed label keys, missing ViewHelpers, changed patched
+files. Every entry ends as `ok`, `manual` or `attention`.
+
+It runs in the pre-flight (entries become QRH rows), during the flight until
+nothing needs attention, and again on the final state. The kinds and checks are
+listed in [docs/SCENARIO-PACKAGES.md](docs/SCENARIO-PACKAGES.md#5-what-your-project-built-on-top-touchpoints).
+
+## Selected packages only: update or check
+
+A flight does not have to move the core. With `--scope packages` it moves
+selected packages on an unchanged core, in the same three phases, or with
+`--check-only` it only assesses them and changes nothing:
+
+```bash
+upgrade-pilot init --scope packages --package 'acme/shop-*' --to dev-main \
+  --dev-stability minimum-stability --check-only
+```
+
+Globs are matched against `composer.lock`. Development targets (`dev-main`,
+`2.x-dev`) are compared through their branch alias, a branch alias that
+composer ignores is reported, and `bump probe --alias` bridges it with a
+recorded inline alias when the team decides so. The whole scenario:
+[docs/SCENARIO-PACKAGES.md](docs/SCENARIO-PACKAGES.md).
+
 ## Database schema and TYPO3 Console
 
 The core's only command-line schema step is `extension:setup`: it applies the
@@ -488,8 +537,9 @@ plugin is enabled). You can use it directly as well:
 | Command | Does |
 |---|---|
 | `init --target <v>` / `init --detect` | Detect project, runtime, own extensions, tests, commit style. Open the flight |
+| `init --scope packages --package <name\|glob> --to <v> [--check-only]` | Open a flight for selected packages on an unchanged core, or only a check of them |
 | `context list\|add` | Pre-collected context and its digests |
-| `commit --tag --subject --step` | Commit all changes in the configured style, with issue reference and recorded commands. `--into-composer-commit` folds composer-only changes into the branch's composer commit |
+| `commit --tag --subject --step [--path]` | Commit all changes (or only those below `--path`) in the configured style, with issue reference and recorded commands. `--into-composer-commit` folds composer-only changes into the branch's composer commit |
 | `composer <args>` / `run -- <cmd>` | Run composer (in the runtime) or a host command such as `jq`, recorded for the next commit |
 | `issues list\|set\|apply` | Issue references: register per-step issues, replace placeholders in the pilot branches |
 | `status [-v]` | Phase, gates, open items and how to answer them, last measurements, campaigns |
@@ -500,8 +550,9 @@ plugin is enabled). You can use it directly as well:
 | `tca --label` | Headless *Check TCA Migrations* (the core has no CLI for it) |
 | `contacts` | Core contact points and which ones the tests execute |
 | `versions [--target]` | Support dates, PHP range, compatible testing framework and TYPO3 Console |
-| `bump show\|probe\|apply` | Raise core constraints and companion packages (testing framework, TYPO3 Console). `probe` dry-runs composer and restores the files |
-| `deps list [--from-lock <ref>]` / `deps docs [--package] [--all]` | Third-party packages that move, and their changelogs, upgrade notes, release notes, breaking commits and new wizards |
+| `bump show\|probe\|apply [--alias <name>=<v>]` | Raise core constraints and companion packages (testing framework, TYPO3 Console), or the packages of a packages flight. `probe` dry-runs composer and restores the files |
+| `deps list [--from-lock <ref>]` / `deps docs [--package] [--all] [--no-rendered]` | Third-party packages that move, and their changelogs, upgrade notes, release notes, rendered manuals, breaking commits and new wizards |
+| `deps touchpoints [--package] [--verify] --label` | Where own code, configuration and patches use or modify third-party packages, verified against the target |
 | `schema check\|plan\|apply` | Detect schema tooling, dry run, apply safe changes until converged |
 | `changelog fetch\|match` | Fetch the target's core changelog, match it against own code |
 | `rules config\|plan\|next\|apply\|commit\|skip\|list` | Rector and Fractor campaigns, one rule at a time |
@@ -575,19 +626,42 @@ throwaway branch: Console `^9.0` suggested as the bridge between 12.4.45 and
 safe statements applied on 13.4 until converged, 19 destructive renames listed
 for post-flight.
 
+The packages scope (0.4.0) was verified on the same project, on TYPO3 13.4
+with `fgtclb/academic-*` (two split packages) at 2.3.4, on throwaway branches.
+The project had a sitepackage XCLASS and subclass of a repository, a listener
+of a plugin event, a copied template with its TypoScript path and a label
+override, added for the test:
+
+- **Update to `dev-main` (3.0.x-dev)**: 16 Breaking and 30 Important entries for
+  `academic-persons`, 4 Breaking for `academic-base`, the upgrade guide from the
+  rendered manual, 15 and 14 breaking commits, two new wizards, one of them
+  opt-in. Touchpoints flagged the XCLASS and subclass (a new parameter of the
+  overridden method), the listener (its event was removed) and the template
+  copy (original changed). The update itself then failed on `cache:flush` with
+  exactly the predicted signature error, and the project's own tests stayed
+  green, since none of them executed the package. After the fixes all eight
+  touchpoints were `ok`, cache flush, schema and the new wizard passed, the
+  opt-in wizard was not needed.
+- **Check of `2.x-dev`**: the probe failed, because the branch alias of the
+  development branch is declared under another name than the version composer
+  uses, so composer ignores it. Reported with the reason, then resolved with a
+  recorded inline alias. 4 Breaking entries on the minor branch (3 and 1), all
+  seven touchpoints `ok`, nothing changed in the project.
+
 ## What is in this repository
 
 | Path | What |
 |---|---|
 | `.claude-plugin/` | Plugin manifest and the marketplace entry |
-| `skills/` | The six skills |
+| `skills/` | The seven skills |
 | `agents/rule-reviewer.md` | Read-only reviewer for one rule's diff |
 | `hooks/` | The base-branch guard |
 | `bin/upgrade-pilot`, `lib/upgrade_pilot/` | The CLI |
 | `lib/php/tca-migrations.php` | Headless TCA migration check, copied into the project at run time |
-| `data/checklist.json` | The three-phase checklist, with who can answer each line |
+| `data/checklist.json`, `data/checklist-packages.json` | The three-phase checklists (core upgrade, selected packages), with who can answer each line |
 | `data/templates/` | Starting points for QRH, MEL and briefing |
 | `docs/PROCESS.md` | The full process guide |
+| `docs/SCENARIO-PACKAGES.md` | Updating or checking selected packages |
 | `tests/` | Unit tests for parsers, constraint matching and the guard |
 | `AGENTS.md`, `.claude/CLAUDE.md` | Rules for changing this repository, loaded by coding agents |
 | `.github/workflows/ci.yml` | Unit tests on Python 3.9 and 3.12, plugin validation, PHP lint |

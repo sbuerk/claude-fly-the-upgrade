@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .core import DATA_DIR, Flight, load_json, short_class
+from .core import Flight, checklist_file, flight_title, load_json, short_class
 
 MARK = {'open': '[ ]', 'done': '[x]', 'no': '[-]', 'na': '[~]', 'handoff': '[?]'}
 
@@ -54,9 +54,9 @@ def key_stages(log: dict) -> list[dict]:
 
 def flight_log(flight: Flight) -> str:
     config, log = flight.config, flight.log
-    spec = load_json(DATA_DIR / 'checklist.json')
+    spec = load_json(checklist_file(config))
     lines = [
-        f'# Flight log: TYPO3 {config.get("source_installed") or config.get("source")} -> {config.get("target")}',
+        f'# Flight log: {flight_title(config)}',
         '',
         '_Rendered by upgrade-pilot from flightlog.json. Do not edit, it is overwritten._',
         '',
@@ -103,6 +103,13 @@ def flight_log(flight: Flight) -> str:
         lines += [f'| {name} | {d["from"] or "(new)"} | {d["to"]} | {d["summary"]} | {", ".join(d["wizards_new"]) or "-"} | {d["report"]} |'
                   for name, d in sorted(deps_log['docs'].items())]
         lines.append('')
+    if log.get('touchpoints'):
+        lines += ['### Modifications of third-party packages (touchpoints)', '',
+                  '| Stage | Total | Needs attention | By hand | Verified | Commit |', '|---|---|---|---|---|---|']
+        lines += [f'| {e["label"]} | {e["total"]} | {e["attention"] if e["verified"] else "-"} | '
+                  f'{e.get("manual", 0) if e["verified"] else "-"} | {"yes" if e["verified"] else "no"} | {e["commit"]} |'
+                  for e in log['touchpoints']]
+        lines.append('')
     if log.get('schema_runs'):
         lines += ['### Database schema', '', '| Stage | Action | Via | Types | Statements | Exit |', '|---|---|---|---|---|---|']
         lines += [f'| {e["label"]} | {e["action"]} | {e["provider"]} | {e["types"]} | '
@@ -133,15 +140,15 @@ def final_developer_report(flight: Flight) -> str:
     config, log = flight.config, flight.log
     commits = []
     for branch_key in ('preflight', 'flight'):
-        from .core import git
+        from .core import branch_exists, branch_start, git
         branch = config['branches'][branch_key]
-        base = config['base_branch'] if branch_key == 'preflight' else config['branches']['preflight']
-        out = git(flight.root, 'log', '--reverse', '--format=%h %s', f'{base}..{branch}')
+        base = branch_start(flight.root, config, branch_key)
+        out = git(flight.root, 'log', '--reverse', '--format=%h %s', f'{base}..{branch}') if branch_exists(flight.root, branch) else ''
         commits.append((branch_key, branch, out.splitlines() if out else []))
     first = next((m for m in log.get('measurements', []) if m['label'] == 'baseline' and m['suite'] == 'functional'), None) \
         or next((m for m in log.get('measurements', []) if m['label'] == 'baseline'), None)
     lines = [
-        f'# Upgrade report: TYPO3 {config.get("source_installed")} -> {config["target"]}', '',
+        f'# {"Update check" if config.get("mode") == "check" else "Upgrade report"}: {flight_title(config)}', '',
         '## Key stages', '',
         *measurements_table(log, key_stages(log)), '',
         '## Every measurement', '',
@@ -159,6 +166,12 @@ def final_developer_report(flight: Flight) -> str:
     if deps_log.get('docs'):
         lines += ['## Third-party dependencies', '']
         lines += [f'- {name} {d["from"] or "(new)"} -> {d["to"]}: {d["summary"]} ({d["report"]})' for name, d in sorted(deps_log['docs'].items())]
+        lines.append('')
+    if log.get('touchpoints'):
+        lines += ['## Modifications of third-party packages (touchpoints)', '']
+        lines += [f'- {e["label"]}: {e["total"]} touchpoint(s)'
+                  + (f', {e["attention"]} need attention, {e.get("manual", 0)} by hand' if e['verified'] else ', not verified')
+                  + f' @ {e["commit"]}' for e in log['touchpoints']]
         lines.append('')
     if log.get('schema_runs'):
         lines += ['## Database schema', '']

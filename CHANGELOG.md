@@ -6,6 +6,48 @@ All notable changes to this plugin. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Packages scope: `init --scope packages --package <name|glob> --to <version>`
+  flies an update of selected third-party packages on an unchanged core, with
+  its own checklist (`data/checklist-packages.json`), in the same three phases.
+  `--check-only` ends the flight after the pre-flight gate, nothing in the
+  project changes. Development targets get `--dev-stability`, recorded as
+  composer commands. New skill `packages`, new guide
+  `docs/SCENARIO-PACKAGES.md`.
+- `deps touchpoints [--verify]`: where own extensions, sitepackages, `config/`
+  and composer patches use or modify third-party packages (XCLASS, subclasses,
+  service overrides, listeners, hooks, TCA overrides, template copies and paths,
+  label overrides, ViewHelpers, persistence mapping, site configuration,
+  patches), derived from each package's declarations and verified against the
+  target as `ok`, `manual` or `attention`. Part of both scopes, in every phase.
+- `deps docs` reads the rendered manual of TYPO3 extensions on docs.typo3.org
+  (Markdown where published, as its `llms.txt` asks), marks opt-in upgrade
+  wizards (excluded from the service container) with their class
+  documentation, and compares development targets through their branch alias.
+- `versions` warns about a branch alias that is declared under another name
+  than the version composer uses, and `bump probe` explains the resulting
+  conflict. `bump --alias <name>=<version>` bridges it with a recorded inline
+  alias, listed as a temporary workaround in the reports.
+- `commit --path` commits only the changes below the given paths.
+- Reports: touchpoints in developer and PM reports, check-only wording.
+
+### Changed
+
+- `init --force` moves the previous flight's state to
+  `.upgrade-pilot/archive/`, instead of mixing old reports, logs and notes
+  into the new flight. The download cache stays.
+
+### Fixed
+
+- Development versions such as `2.x-dev` no longer count as releases, so a
+  step to a development branch is no longer reported as a downgrade.
+- The commits of the flight branch are listed when the pre-flight made no
+  commits and its branch does not exist.
+- The schema line of the PM report no longer claims "0 changes" when the tooling
+  does not report a count.
+- Core-scope changelog matching also reads the project's `config/` directory.
+
 ## [0.3.0] - 2026-09-30
 
 ### Added

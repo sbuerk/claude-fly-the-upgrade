@@ -1,0 +1,424 @@
+{
+  "source": "Upgrade Flight Checklist, package scope: upgrade or check selected packages without a core upgrade",
+  "owners": {
+    "pilot": "The pilot can answer it with tool evidence.",
+    "shared": "The pilot prepares evidence, a human confirms.",
+    "human": "Only a person can answer it. The pilot asks and records."
+  },
+  "phases": {
+    "preflight": {
+      "title": "Phase 1 - Dispatch & Pre-Flight (packages)",
+      "aim": "Nothing here changes the packages yet. Know what moves, what it touches in the project and what its maintainers wrote about it.",
+      "gate": {
+        "id": "go-no-go",
+        "title": "Go / No-Go",
+        "go": [
+          "The target resolves (probe), including what moves with it",
+          "Every breaking entry that touches the project has a planned answer in the QRH",
+          "Tests execute the touchpoints, or the gaps are on the MEL",
+          "A backup restored successfully at least once"
+        ],
+        "nogo": [
+          "\"We will see after the update\"",
+          "The target needs a TYPO3 core or PHP version the project does not run",
+          "A development target without a decision how it is allowed and when it is replaced by a release",
+          "Touchpoints nobody has looked at"
+        ]
+      },
+      "sections": [
+        {
+          "title": "The packages you have",
+          "items": [
+            {
+              "id": "pf.context",
+              "owner": "pilot",
+              "title": "Pre-collected context (issues, documents, notes) read, digested and reflected in QRH and briefing",
+              "title_de": "Vorab gesammelte Informationen (Tickets, Dokumente, Notizen) gelesen und in QRH und Briefing berücksichtigt",
+              "how": "context list, read every reference, context add with a digest"
+            },
+            {
+              "id": "pf.packages-inventory",
+              "owner": "pilot",
+              "title": "Packages in scope resolved: installed versions, direct or transitive, what requires them",
+              "title_de": "Betroffene Pakete ermittelt: installierte Versionen, direkt oder indirekt eingebunden, wer sie benötigt",
+              "how": "init resolves names and globs, deps list shows what moves"
+            },
+            {
+              "id": "pf.packages-support",
+              "owner": "shared",
+              "title": "Each package has a maintainer contact and a support status (maintained, abandoned, fork)",
+              "title_de": "Für jedes Paket gibt es eine Ansprechperson und einen Support-Status (gepflegt, aufgegeben, Fork)",
+              "how": "deps list flags abandoned packages, a human names contacts"
+            },
+            {
+              "id": "pf.packages-compatibility",
+              "owner": "pilot",
+              "title": "The target supports the installed TYPO3 core and PHP version",
+              "title_de": "Die Zielversion unterstützt den installierten TYPO3-Core und die PHP-Version",
+              "how": "versions"
+            }
+          ]
+        },
+        {
+          "title": "The route ahead",
+          "items": [
+            {
+              "id": "pf.packages-probe",
+              "owner": "pilot",
+              "title": "The target resolves: composer update of the packages works as a dry run, with what moves along",
+              "title_de": "Die Zielversion ist installierbar: composer update der Pakete funktioniert als Probelauf, inklusive mitbewegter Pakete",
+              "how": "bump probe"
+            },
+            {
+              "id": "pf.packages-stability",
+              "owner": "shared",
+              "title": "Development targets: how the project allows them is decided, and when a release replaces them",
+              "title_de": "Entwicklungsstände als Ziel: Wie das Projekt sie erlaubt, ist entschieden, ebenso wann ein Release sie ersetzt",
+              "how": "init --dev-stability, MEL row with a date"
+            },
+            {
+              "id": "pf.dependency-docs",
+              "owner": "pilot",
+              "title": "Changelogs, upgrade guides, release notes and rendered documentation of the packages read, breaking entries and new upgrade wizards in the QRH",
+              "title_de": "Changelogs, Upgrade-Anleitungen, Release Notes und gerenderte Dokumentation der Pakete gelesen, Breaking-Einträge und neue Upgrade-Wizards im QRH erfasst",
+              "how": "deps docs (repository at the target, docs.typo3.org, hosting release notes)"
+            },
+            {
+              "id": "pf.packages-touchpoints",
+              "owner": "pilot",
+              "title": "Where the project uses or modifies the packages is known: XCLASSes, subclasses, decorated services, listeners, hooks, TCA, TypoScript, template and language overrides, site configuration, patches",
+              "title_de": "Bekannt, wo das Projekt die Pakete nutzt oder anpasst: XCLASSes, Unterklassen, dekorierte Services, Listener, Hooks, TCA, TypoScript, Template- und Sprach-Overrides, Site-Konfiguration, Patches",
+              "how": "deps touchpoints (own extensions, sitepackages, config/, composer patches)"
+            },
+            {
+              "id": "pf.breaking-worklist",
+              "owner": "pilot",
+              "title": "Breaking changes that touch the project extracted into a work list",
+              "title_de": "Breaking Changes, die das Projekt betreffen, als Arbeitsliste erfasst",
+              "how": "QRH rows from deps docs and touchpoints"
+            }
+          ]
+        },
+        {
+          "title": "Instruments",
+          "items": [
+            {
+              "id": "pf.packages-tests",
+              "owner": "pilot",
+              "title": "Tests execute the touchpoints: plugin rendering with the project configuration, own listeners, overrides",
+              "title_de": "Tests führen die Berührungspunkte aus: Plugin-Ausgabe mit der Projektkonfiguration, eigene Listener, Overrides",
+              "how": "instruments skill, commit --step instruments"
+            },
+            {
+              "id": "pf.baseline",
+              "owner": "pilot",
+              "title": "Baseline recorded: the suite's current result is known and understood",
+              "title_de": "Ausgangsmessung erfasst: Das aktuelle Ergebnis der Tests ist bekannt und verstanden",
+              "how": "measure --label baseline"
+            }
+          ]
+        },
+        {
+          "title": "Crew and contingency",
+          "items": [
+            {
+              "id": "pf.qrh",
+              "owner": "pilot",
+              "title": "QRH: the failures you expect, each with its prepared answer",
+              "title_de": "QRH: die erwarteten Fehler, jeweils mit vorbereiteter Antwort",
+              "how": "QRH.md"
+            },
+            {
+              "id": "pf.mel",
+              "owner": "shared",
+              "title": "MEL: what you accept as broken, reason and rectification date each",
+              "title_de": "MEL: bewusst in Kauf genommene Einschränkungen, jeweils mit Grund und Termin",
+              "how": "MEL.md"
+            },
+            {
+              "id": "pf.briefing",
+              "owner": "shared",
+              "title": "Briefing written: what changes, what to expect, who does what",
+              "title_de": "Briefing geschrieben: Was ändert sich, was ist zu erwarten, wer macht was",
+              "how": "BRIEFING.md"
+            },
+            {
+              "id": "pf.schema-tooling",
+              "owner": "shared",
+              "title": "Schema update scriptable with a dry run (TYPO3 Console), or the manual steps written down",
+              "title_de": "Datenbank-Schemaänderungen skriptbar mit Probelauf (TYPO3 Console) oder manuelle Schritte beschrieben",
+              "how": "schema check"
+            },
+            {
+              "id": "pf.backup-restore",
+              "owner": "shared",
+              "title": "Backup and restore rehearsed, not assumed",
+              "title_de": "Sicherung und Wiederherstellung geprobt, nicht angenommen",
+              "how": "snapshot take + restore locally, production is human"
+            }
+          ]
+        }
+      ]
+    },
+    "flight": {
+      "title": "Phase 2 - Take-Off & Cruise (packages)",
+      "aim": "Raise the packages, apply what their maintainers ask for, get every test green.",
+      "gate": {
+        "id": "cleared",
+        "title": "Cleared to hand over",
+        "go": [
+          "All suites green, without skipped or weakened tests",
+          "Their upgrade wizards ran and were verified on data",
+          "Overrides re-based onto the new originals",
+          "Frontend and backend smoke-tested by a person"
+        ],
+        "nogo": [
+          "Tests green because they were skipped or weakened",
+          "Overrides nobody compared",
+          "\"It works locally\""
+        ]
+      },
+      "sections": [
+        {
+          "title": "Before the roll",
+          "items": [
+            {
+              "id": "fl.backup",
+              "owner": "shared",
+              "title": "Backup taken: database and files, verified",
+              "title_de": "Sicherung erstellt: Datenbank und Dateien, geprüft",
+              "how": "snapshot take locally, production is human"
+            }
+          ]
+        },
+        {
+          "title": "The sequence",
+          "items": [
+            {
+              "id": "fl.branch",
+              "owner": "pilot",
+              "title": "1 - Branch: everything after this point is reversible",
+              "title_de": "1 - Branch: Alles danach ist umkehrbar",
+              "how": "git switch -c <flight branch>"
+            },
+            {
+              "id": "fl.packages-require",
+              "owner": "pilot",
+              "title": "2 - Packages raised through composer: constraints, stability, one transaction, first commit of the branch",
+              "title_de": "2 - Pakete per Composer angehoben: Abhängigkeiten, Stabilität, ein Schritt, erster Commit des Branches",
+              "how": "bump apply, composer update <packages> -W, commit --step packages"
+            },
+            {
+              "id": "fl.dependency-migrations",
+              "owner": "pilot",
+              "title": "3 - Migration steps of the packages done: breaking entries handled, code and configuration adjusted",
+              "title_de": "3 - Migrationsschritte der Pakete erledigt: Breaking-Einträge bearbeitet, Code und Konfiguration angepasst",
+              "how": "deps list --from-lock, deps docs, QRH"
+            },
+            {
+              "id": "fl.third-party-modifications",
+              "owner": "pilot",
+              "title": "4 - Every modification of the packages verified against the target: XCLASSes, subclasses, services, listeners, hooks, patches",
+              "title_de": "4 - Jede Anpassung an den Paketen gegen die Zielversion geprüft: XCLASSes, Unterklassen, Services, Listener, Hooks, Patches",
+              "how": "deps touchpoints --verify after deps docs"
+            },
+            {
+              "id": "fl.packages-overrides",
+              "owner": "shared",
+              "title": "5 - Own template, partial, layout and TypoScript overrides re-based onto the new originals",
+              "title_de": "5 - Eigene Template-, Partial-, Layout- und TypoScript-Overrides auf die neuen Originale angepasst",
+              "how": "deps touchpoints lists them, diff the original between both versions"
+            },
+            {
+              "id": "fl.packages-configuration",
+              "owner": "pilot",
+              "title": "6 - Changed configuration applied: site sets and settings, TypoScript constants, TCA overrides, extension configuration",
+              "title_de": "6 - Geänderte Konfiguration übernommen: Site Sets und Einstellungen, TypoScript-Konstanten, TCA-Overrides, Extension-Konfiguration",
+              "how": "deps docs entries, touchpoints"
+            },
+            {
+              "id": "fl.schema",
+              "owner": "pilot",
+              "title": "7 - Schema: the packages' database changes applied and converged",
+              "title_de": "7 - Datenbank-Schema: Änderungen der Pakete angewendet, ohne offene Reste",
+              "how": "schema plan, schema apply"
+            },
+            {
+              "id": "fl.wizards",
+              "owner": "pilot",
+              "title": "8 - Wizards of the packages: listed, run, verified on data",
+              "title_de": "8 - Upgrade-Wizards der Pakete: angezeigt, ausgeführt, an Daten geprüft",
+              "how": "cache:flush, upgrade:list, upgrade:run"
+            },
+            {
+              "id": "fl.caches",
+              "owner": "pilot",
+              "title": "9 - Caches: flush, warm, then look at the site",
+              "title_de": "9 - Caches: leeren, aufwärmen, dann die Website ansehen",
+              "how": "typo3 cache:flush + a frontend request"
+            }
+          ]
+        },
+        {
+          "title": "Working the failures",
+          "items": [
+            {
+              "id": "fl.one-at-a-time",
+              "owner": "pilot",
+              "title": "Red tests worked one at a time, in order",
+              "title_de": "Rote Tests einzeln und der Reihe nach bearbeitet",
+              "how": "measure after each fix"
+            },
+            {
+              "id": "fl.generated-code",
+              "owner": "pilot",
+              "title": "Generated or copied code read before it is trusted",
+              "title_de": "Generierter oder kopierter Code gelesen, bevor ihm vertraut wird",
+              "how": "review"
+            },
+            {
+              "id": "fl.two-kinds",
+              "owner": "pilot",
+              "title": "Errors separated: broken by the update, or broken already",
+              "title_de": "Fehler getrennt: durch das Update verursacht oder schon vorher vorhanden",
+              "how": "compare with the baseline"
+            }
+          ]
+        },
+        {
+          "title": "Cockpit discipline",
+          "items": [
+            {
+              "id": "fl.sterile",
+              "owner": "pilot",
+              "title": "Sterile cockpit: no unrelated refactoring on this branch",
+              "title_de": "Keine fachfremden Umbauten auf diesem Branch",
+              "how": "commit review"
+            },
+            {
+              "id": "fl.one-tool-one-commit",
+              "owner": "pilot",
+              "title": "One logical change, one commit",
+              "title_de": "Eine logische Änderung, ein Commit",
+              "how": "upgrade-pilot commit --step"
+            }
+          ]
+        }
+      ]
+    },
+    "postflight": {
+      "title": "Phase 3 - Approach, Landing & Debrief (packages)",
+      "aim": "Confirm, clean up what only the update needed, record it for the next one.",
+      "gate": {
+        "id": "debriefed",
+        "title": "Debriefed",
+        "go": [
+          "Report written: predicted versus actual",
+          "Development stability reverted or scheduled with a date"
+        ],
+        "nogo": [
+          "A development version left in production dependencies without a plan"
+        ]
+      },
+      "sections": [
+        {
+          "title": "Straight after landing",
+          "items": [
+            {
+              "id": "pst.frontend",
+              "owner": "shared",
+              "title": "Frontend smoke-tested by a human, not by a status code",
+              "title_de": "Frontend von einem Menschen geprüft, nicht nur per Statuscode",
+              "how": "pilot requests pages, a human looks"
+            },
+            {
+              "id": "pst.backend",
+              "owner": "human",
+              "title": "Backend: editors can do their daily work with the packages",
+              "title_de": "Backend: Redaktion kann die tägliche Arbeit mit den Paketen erledigen",
+              "how": "ask"
+            },
+            {
+              "id": "pst.logs",
+              "owner": "human",
+              "title": "Error rates watched for the first days",
+              "title_de": "Fehlerraten in den ersten Tagen beobachtet",
+              "how": "ask"
+            }
+          ]
+        },
+        {
+          "title": "Sweep again",
+          "items": [
+            {
+              "id": "pst.touchpoints",
+              "owner": "pilot",
+              "title": "Modifications of the packages verified again on the final state",
+              "title_de": "Anpassungen an den Paketen auf dem Endstand erneut geprüft",
+              "how": "deps touchpoints --verify --label postflight"
+            },
+            {
+              "id": "pst.packages-deprecations",
+              "owner": "pilot",
+              "title": "Deprecations of the packages the project still uses recorded for the next update",
+              "title_de": "Deprecations der Pakete, die das Projekt noch nutzt, für das nächste Update erfasst",
+              "how": "deps docs Deprecation entries, touchpoints"
+            },
+            {
+              "id": "pst.deprecation-log",
+              "owner": "shared",
+              "title": "Deprecation log read under traffic",
+              "title_de": "Deprecation-Log unter Last gelesen",
+              "how": "local crawl, real traffic is human"
+            }
+          ]
+        },
+        {
+          "title": "Remove the ferry equipment",
+          "items": [
+            {
+              "id": "pst.packages-stability",
+              "owner": "shared",
+              "title": "Development stability reverted, or scheduled for the release of the packages",
+              "title_de": "Entwicklungs-Stabilität zurückgenommen oder für das Release der Pakete eingeplant",
+              "how": "composer config, MEL date"
+            },
+            {
+              "id": "pst.constraints",
+              "owner": "pilot",
+              "title": "Constraints pinned to released versions once they exist",
+              "title_de": "Abhängigkeiten auf veröffentlichte Versionen festgelegt, sobald es sie gibt",
+              "how": "composer require through upgrade-pilot composer"
+            }
+          ]
+        },
+        {
+          "title": "Record it while you still remember",
+          "items": [
+            {
+              "id": "pst.report",
+              "owner": "pilot",
+              "title": "Report: predicted versus actual, what took longest",
+              "title_de": "Bericht: Vorhersage und Ergebnis, was am längsten gedauert hat",
+              "how": "report"
+            },
+            {
+              "id": "pst.docs",
+              "owner": "shared",
+              "title": "Project documentation updated",
+              "title_de": "Projektdokumentation aktualisiert",
+              "how": "diff review"
+            },
+            {
+              "id": "pst.checklist",
+              "owner": "shared",
+              "title": "Checklist updated: surprises become lines",
+              "title_de": "Checkliste aktualisiert: Überraschungen werden zu neuen Punkten",
+              "how": "debrief"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

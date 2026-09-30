@@ -1,4 +1,4 @@
-# Briefing: TYPO3 {source} -> {target}
+# Briefing: {title}
 
 ## What changes
 

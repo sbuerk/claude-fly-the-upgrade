@@ -149,9 +149,12 @@ def needles(entry: dict) -> list[dict]:
 
 
 def own_files(flight: Flight) -> dict[str, list[str]]:
+    """Own extensions and sitepackages, plus the project's config/ (site configuration, settings)."""
     files = {}
-    for ext in flight.extensions():
-        base = flight.root / ext['path']
+    bases = [flight.root / ext['path'] for ext in flight.extensions()]
+    if (flight.root / 'config').is_dir() and all(ext['path'] != '.' for ext in flight.extensions()):
+        bases.append(flight.root / 'config')
+    for base in bases:
         for path in base.rglob('*'):
             parts = path.relative_to(base).parts
             if any(p in ('vendor', '.Build', 'node_modules', '.git', 'var', 'public', '.upgrade-pilot') for p in parts):

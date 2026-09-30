@@ -22,6 +22,23 @@ def now() -> str:
     return datetime.datetime.now().astimezone().isoformat(timespec='seconds')
 
 
+def checklist_file(config: dict | None) -> Path:
+    """The checklist of the flight's scope: a core upgrade or selected packages."""
+    scope = (config or {}).get('scope', 'core')
+    return DATA_DIR / ('checklist-packages.json' if scope == 'packages' else 'checklist.json')
+
+
+def flight_title(config: dict, plain: bool = False) -> str:
+    """'TYPO3 12.4.45 -> 13.4' or 'acme/shop-* 2.3.4 -> dev-main'."""
+    if config.get('scope') == 'packages':
+        packages = config.get('packages', {})
+        subject = ', '.join(packages.get('patterns') or packages.get('names') or [])
+        installed = sorted(set((packages.get('installed') or {}).values()))
+        source = installed[0] if len(installed) == 1 else ('/'.join(installed) or '?')
+        return f'{subject} {source} -> {packages.get("to")}'
+    return f'TYPO3 {config.get("source_installed") or config.get("source")} -> {config.get("target")}'
+
+
 def die(message: str, code: int = 1) -> None:
     print(f'upgrade-pilot: {message}', file=sys.stderr)
     sys.exit(code)
@@ -102,6 +119,18 @@ def git_head(root: Path) -> str:
     return git(root, 'rev-parse', '--short', 'HEAD')
 
 
+def branch_exists(root: Path, branch: str) -> bool:
+    return bool(git(root, 'rev-parse', '--verify', '--quiet', f'refs/heads/{branch}'))
+
+
+def branch_start(root: Path, config: dict, key: str) -> str:
+    """Where the commits of a flight branch begin. A pre-flight without commits never creates its branch."""
+    preflight = config['branches']['preflight']
+    if key == 'flight' and branch_exists(root, preflight):
+        return preflight
+    return config['base_branch']
+
+
 def git_dirty(root: Path) -> list[str]:
     # Not via git(): stripping would eat the status column of the first line.
     rc, out, _ = sh('git status --porcelain --untracked-files=all', root, merge=False)
@@ -123,7 +152,7 @@ class Flight:
         checklist = self.log.get('checklist')
         if checklist is None:
             return
-        spec = load_json(DATA_DIR / 'checklist.json', {})
+        spec = load_json(checklist_file(self.config), {})
         for phase in spec.get('phases', {}).values():
             for section in phase['sections']:
                 for item in section['items']:

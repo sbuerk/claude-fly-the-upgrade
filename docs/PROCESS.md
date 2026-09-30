@@ -38,7 +38,8 @@ shows every option.
 
 Three things run through all phases:
 
-- **The checklist** (68 lines from the talk). Every line is answered: `done`,
+- **The checklist** (the 68 lines of the talk, plus two about modifications
+  of third-party packages). Every line is answered: `done`,
   `no` (an accepted risk, with the reason), `na`, or `handoff` (a person has to
   do or confirm it). Open lines block the gate.
 - **The instruments.** Every claim is measured: test suites (`measure`),
@@ -55,6 +56,10 @@ Who does what:
 | writing missing tests, applying and reviewing rules, fixing code | gate decisions (unless you chose automatic gates) |
 | commits on the pilot branches, in your style | production backup, freeze, staging, editor acceptance |
 | reports with facts, summaries in plain language | merging, pushing, deploying |
+
+Updating or only checking selected third-party packages, without a core
+upgrade, uses the same phases with its own checklist:
+**[Scenario: updating or checking selected packages](SCENARIO-PACKAGES.md)**.
 
 ---
 
@@ -385,7 +390,9 @@ commits.
 - Resume any time: `/fly-the-upgrade:upgrade` or `upgrade-pilot status -v`.
 - Any measurement, scan or report can be re-run, every run is recorded with
   its label, branch and commit.
-- Start over: `upgrade-pilot init --force ...` replaces the flight log. Your
+- Start over: `upgrade-pilot init --force ...` replaces the flight. The old
+  state (flight log, reports, notes, logs, dependency reports) moves to
+  `.upgrade-pilot/archive/<time>-<title>/`, the download cache stays. Your
   branches stay, delete them yourself if wanted.
 - Throw a rehearsal away: switch back to the base branch, delete the pilot
   branches, `composer install`, restore the database snapshot, remove

@@ -9,8 +9,8 @@ import shlex
 import shutil
 from pathlib import Path
 
-from .core import (DATA_DIR, PHP_DIR, STATE_DIR, TEMPLATE_DIR, Flight, die, git, git_branch, load_json, now, sh,
-                   write_json)
+from .core import (DATA_DIR, PHP_DIR, STATE_DIR, TEMPLATE_DIR, Flight, checklist_file, die, flight_title, git, git_branch,
+                   load_json, now, sh, slug, write_json)
 
 
 def locked_packages(root: Path) -> dict[str, dict]:
@@ -243,14 +243,32 @@ def probe_platform(flight: Flight, runtime: dict) -> dict:
     return platform
 
 
-def fresh_checklist() -> dict:
-    data = load_json(DATA_DIR / 'checklist.json')
+def fresh_checklist(config: dict) -> dict:
+    data = load_json(checklist_file(config))
     items = {}
     for phase, spec in data['phases'].items():
         for section in spec['sections']:
             for item in section['items']:
                 items[item['id']] = {'status': 'open', 'note': '', 'evidence': '', 'at': None}
     return items
+
+
+# Kept across flights: downloads that do not depend on the flight, and earlier flights.
+KEEP_ON_RESTART = {'cache', 'archive'}
+
+
+def archive_previous(state: Path) -> Path | None:
+    """Move the state of a replaced flight aside, so reports, logs and notes of the old flight never mix with the new one."""
+    old = load_json(state / 'config.json', None)
+    if not old:
+        return None
+    stamp = now()[:19].replace('-', '').replace(':', '').replace('T', '-')
+    target = state / 'archive' / f'{stamp}-{slug(flight_title(old, plain=True))}'
+    target.mkdir(parents=True, exist_ok=True)
+    for entry in state.iterdir():
+        if entry.name not in KEEP_ON_RESTART:
+            shutil.move(str(entry), str(target / entry.name))
+    return target
 
 
 def exclude_state_dir(root: Path) -> None:
@@ -297,6 +315,35 @@ def commit_policy(args) -> dict:
     }
 
 
+DEV_VERSION = re.compile(r'(^dev-|-dev$|\.x-dev$|@dev$)')
+
+
+def resolve_packages(packages: dict[str, dict], patterns: list[str]) -> dict[str, str]:
+    """Installed packages matching names or globs (acme/shop-*), with their installed versions."""
+    import fnmatch
+    found = {}
+    for pattern in patterns:
+        matches = [name for name in packages if fnmatch.fnmatch(name, pattern)]
+        if not matches:
+            die(f'{pattern} matches no installed package in composer.lock')
+        for name in matches:
+            found[name] = packages[name]['version']
+    return dict(sorted(found.items()))
+
+
+def package_scope(args, packages: dict[str, dict]) -> dict:
+    if not args.package or not args.to:
+        die('--scope packages needs --package <name or glob> (repeatable) and --to <version, constraint or branch>')
+    installed = resolve_packages(packages, args.package)
+    dev = bool(DEV_VERSION.search(args.to))
+    if dev and not args.dev_stability:
+        die(f'{args.to} is a development version. Decide how the project allows it: --dev-stability minimum-stability '
+            '(composer config minimum-stability dev + prefer-stable, recorded, to be reverted once released) or '
+            '--dev-stability none (the project already allows it)')
+    return {'patterns': args.package, 'names': list(installed), 'installed': installed, 'to': args.to, 'dev': dev,
+            'dev_stability': args.dev_stability if dev else None}
+
+
 def run(args) -> None:
     start = Path(args.project or '.').resolve()
     top = git(start, 'rev-parse', '--show-toplevel')
@@ -304,8 +351,8 @@ def run(args) -> None:
     if args.detect:
         print(json.dumps(detect(root), indent=2))
         return
-    if not args.target:
-        die('--target is required (or use --detect to see what the project offers)')
+    if args.scope == 'core' and not args.target:
+        die('--target is required (or --scope packages, or --detect to see what the project offers)')
     if not (root / 'composer.json').is_file():
         die(f'{root} has no composer.json. Composer-mode projects and extensions only.')
     if (root / STATE_DIR / 'config.json').is_file() and not args.force:
@@ -317,9 +364,11 @@ def run(args) -> None:
     if not installed and not args.source:
         die('typo3/cms-core not found in composer.lock. Pass --source <major.minor>.')
     source = args.source or major_minor(installed)
-    target = args.target
-    if not re.fullmatch(r'\d+\.\d+', target):
+    scope = package_scope(args, packages) if args.scope == 'packages' else None
+    target = args.target if not scope else (installed and major_minor(installed)) or source
+    if not scope and not re.fullmatch(r'\d+\.\d+', target):
         die('--target must look like 13.4')
+    label = args.label or (slug(f'{scope["patterns"][0].split("/")[-1].rstrip("*-")}-{scope["to"]}') if scope else None)
 
     flight = Flight(root)
     runtime = detect_runtime(root, args.runtime, args.exec, args.composer)
@@ -339,9 +388,12 @@ def run(args) -> None:
         'target': target,
         'base_branch': base,
         'branches': {
-            'preflight': f'{prefix}/preflight-{source}',
-            'flight': f'{prefix}/{target}',
+            'preflight': f'{prefix}/preflight-{label or source}',
+            'flight': f'{prefix}/{label or target}',
         },
+        'scope': args.scope,
+        'mode': 'check' if args.check_only else 'upgrade',
+        'packages': scope,
         'runtime': runtime,
         'gates': args.gates,
         'commit': commit_policy(args),
@@ -368,10 +420,11 @@ def run(args) -> None:
         },
     }
     flight.config['platform'] = probe_platform(flight, runtime)
+    archived = archive_previous(flight.dir) if args.force else None
     flight.log = {
         'schema': 1,
         'phase': 'preflight',
-        'checklist': fresh_checklist(),
+        'checklist': fresh_checklist(flight.config),
         'gates': {},
         'measurements': [],
         'scans': [],
@@ -386,15 +439,21 @@ def run(args) -> None:
         destination = flight.dir / template.name
         if not destination.exists():
             text = template.read_text(encoding='utf-8')
-            destination.write_text(text.replace('{source}', source).replace('{target}', target), encoding='utf-8')
+            destination.write_text(text.replace('{title}', flight_title(flight.config)), encoding='utf-8')
     from .context import register
     for ref in args.context:
         register(flight, ref)
-    flight.event(f'Flight opened: TYPO3 {installed or source} -> {target}, base branch {base}')
+    flight.event(f'Flight opened: {flight_title(flight.config)} ({args.scope} scope, {flight.config["mode"]}), base branch {base}')
     flight.save()
 
     print(f'Flight opened in {flight.rel(flight.dir)}/ (git-excluded)')
-    print(f'  TYPO3 {installed or source} -> {target}   runtime: {runtime["kind"]}   gates: {args.gates}')
+    if archived:
+        print(f'  previous flight moved to {flight.rel(archived)}/')
+    print(f'  {flight_title(flight.config)}   scope: {args.scope}{" (check only)" if args.check_only else ""}   runtime: {runtime["kind"]}   gates: {args.gates}')
+    if scope:
+        print('  packages: ' + ', '.join(f'{n} {v}' for n, v in scope['installed'].items()))
+        if scope['dev']:
+            print(f'  development target, stability: {scope["dev_stability"]}')
     policy = flight.config['commit']
     print(f'  commits: style {policy["style"]}, issues {policy["issue_mode"]}' + (f' ({policy["issue"]})' if policy.get('issue') else '')
           + f', push {"allowed" if args.allow_push else "blocked while the flight is open"}'

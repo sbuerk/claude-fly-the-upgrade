@@ -11,7 +11,7 @@ and embedded, so re-rendering never loses it.
 
 from __future__ import annotations
 
-from .core import DATA_DIR, Flight, die, git, load_json, now
+from .core import Flight, branch_exists, branch_start, checklist_file, die, flight_title, git, load_json, now
 from .render import final_developer_report, measurements_table, statements_cell
 
 PHASES = ('preflight', 'flight', 'postflight')
@@ -21,7 +21,13 @@ T = {
     'en': {
         'title': {'preflight': 'Pre-flight report', 'flight': 'Upgrade report (flight)', 'postflight': 'Post-flight report',
                   'final': 'Final report'},
-        'upgrade': 'TYPO3 upgrade {source} to {target}',
+        'upgrade': 'Upgrade {title}',
+        'check': 'Update check {title}',
+        'alias_risk': '**Temporary workaround**: {name} {to} is installed as version {alias} (inline alias), because the version '
+                      'mapping of the package for its development branch does not take effect. Remove it once the package is released or fixed.',
+        'status_check': 'Check completed: nothing in the project was changed',
+        'next_check': 'The check is complete and nothing was changed. The update itself is a separate flight, started from this '
+                      'report once your team decides to go ahead.',
         'project': 'Project', 'date': 'Date', 'period': 'Period', 'status': 'Status',
         'status_go': {'preflight': 'Go: ready for the upgrade', 'flight': 'Cleared: ready for acceptance by your team',
                       'postflight': 'Landed: upgrade completed', 'final': 'Completed'},
@@ -43,6 +49,10 @@ T = {
         'deps': '{n} third-party package(s) checked for documented changes, {breaking} with breaking changes noted.',
         'schema': 'Database structure: {text}.',
         'schema_text': '{n} change(s) prepared and verified in the local test environment',
+        'schema_unknown': 'changes applied in the local test environment, the number of changes is not reported by the available tooling',
+        'touchpoints': 'Places where the project modifies or extends the third-party packages (replaced classes, copied templates, '
+                       'event listeners and similar): {total} found and checked against the new versions, {attention} still need work, '
+                       '{manual} need a developer\'s look.',
         'no_risks': 'None recorded.', 'no_team': 'Nothing at the moment.',
         'next_go': {'preflight': 'The upgrade itself can start on branch {flight}. Before anything goes live, the points for your team above have to be done.',
                     'flight': 'Acceptance by your team: frontend and backend checks, staging with production-like data, editors. Then the follow-up phase.',
@@ -55,7 +65,13 @@ T = {
     'de': {
         'title': {'preflight': 'Bericht Vorbereitung (Pre-Flight)', 'flight': 'Bericht Durchführung (Flight)',
                   'postflight': 'Bericht Nachbereitung (Post-Flight)', 'final': 'Abschlussbericht'},
-        'upgrade': 'TYPO3-Upgrade von {source} auf {target}',
+        'upgrade': 'Upgrade {title}',
+        'check': 'Prüfung des Updates {title}',
+        'alias_risk': '**Vorübergehende Hilfslösung**: {name} {to} wird als Version {alias} installiert (Inline-Alias), weil die Versionszuordnung '
+                      'des Pakets für seinen Entwicklungszweig nicht greift. Entfernen, sobald das Paket veröffentlicht oder korrigiert ist.',
+        'status_check': 'Prüfung abgeschlossen: am Projekt wurde nichts geändert',
+        'next_check': 'Die Prüfung ist abgeschlossen, am Projekt wurde nichts geändert. Das Update selbst ist ein eigener Durchgang, '
+                      'der auf Grundlage dieses Berichts beginnt, sobald Ihr Team sich dafür entscheidet.',
         'project': 'Projekt', 'date': 'Datum', 'period': 'Zeitraum', 'status': 'Status',
         'status_go': {'preflight': 'Go: bereit für das Upgrade', 'flight': 'Freigegeben: bereit für die Abnahme durch Ihr Team',
                       'postflight': 'Gelandet: Upgrade abgeschlossen', 'final': 'Abgeschlossen'},
@@ -77,6 +93,10 @@ T = {
         'deps': '{n} Fremdpaket(e) auf dokumentierte Änderungen geprüft, bei {breaking} sind Breaking Changes vermerkt.',
         'schema': 'Datenbankstruktur: {text}.',
         'schema_text': '{n} Änderung(en) vorbereitet und in der lokalen Testumgebung geprüft',
+        'schema_unknown': 'Änderungen in der lokalen Testumgebung angewendet, die Anzahl weist das verfügbare Werkzeug nicht aus',
+        'touchpoints': 'Stellen, an denen das Projekt die Fremdpakete verändert oder erweitert (ersetzte Klassen, kopierte Templates, '
+                       'Event-Listener und Ähnliches): {total} gefunden und gegen die neuen Versionen geprüft, {attention} brauchen noch Arbeit, '
+                       'bei {manual} ist noch ein Blick aus der Entwicklung nötig.',
         'no_risks': 'Keine erfasst.', 'no_team': 'Derzeit nichts.',
         'next_go': {'preflight': 'Das eigentliche Upgrade kann auf dem Branch {flight} beginnen. Bevor etwas live geht, müssen die oben genannten Punkte für Ihr Team erledigt sein.',
                     'flight': 'Abnahme durch Ihr Team: Prüfung von Frontend und Backend, Staging mit produktionsnahen Daten, Redaktion. Danach folgt die Nachbereitung.',
@@ -91,8 +111,8 @@ T = {
 
 # -- data helpers --------------------------------------------------------------------------------
 
-def checklist_items(phase: str | None) -> list[dict]:
-    spec = load_json(DATA_DIR / 'checklist.json')
+def checklist_items(phase: str | None, config: dict | None = None) -> list[dict]:
+    spec = load_json(checklist_file(config))
     out = []
     for name, data in spec['phases'].items():
         if phase in (None, name):
@@ -138,10 +158,10 @@ def commits_of(flight: Flight, phase: str | None) -> tuple[str, list[str]]:
     if phase == 'preflight':
         branch, exclude = branches['preflight'], flight.config['base_branch']
     elif phase in ('flight', 'postflight'):
-        branch, exclude = branches['flight'], branches['preflight']
+        branch, exclude = branches['flight'], branch_start(flight.root, flight.config, 'flight')
     else:
         branch, exclude = branches['flight'], flight.config['base_branch']
-    if not git(flight.root, 'rev-parse', '--verify', '--quiet', f'refs/heads/{branch}'):
+    if not branch_exists(flight.root, branch):
         return branch, []
     start, end = window(flight, phase) if phase == 'postflight' else (None, None)
     args = ['log', '--format=%h %s', f'{exclude}..{branch}'] + ([f'--since={start}'] if start else [])
@@ -165,7 +185,14 @@ def project_name(flight: Flight) -> str:
 
 # -- pm report --------------------------------------------------------------------------------------
 
+def checking(flight: Flight) -> bool:
+    """Check-only flight: it lands after the pre-flight gate, there is no flight and no post-flight."""
+    return flight.config.get('mode') == 'check'
+
+
 def status_line(flight: Flight, phase: str, t: dict) -> str:
+    if checking(flight) and flight.log.get('phase') == 'landed' and phase in ('preflight', 'final'):
+        return t['status_check']
     if phase == 'final':
         return t['status_go']['final'] if flight.log.get('phase') == 'landed' else t['status_pending']
     gate = flight.log.get('gates', {}).get(phase)
@@ -194,14 +221,15 @@ def pm_report(flight: Flight, phase: str, lang: str) -> str:
     scope = None if phase == 'final' else phase
     start, end = window(flight, scope)
     title_key = 'title_de' if lang == 'de' else 'title'
-    lines = [f'# {t["title"][phase]}: {t["upgrade"].format(source=config.get("source_installed"), target=config["target"])}', '',
+    subject = t['check' if checking(flight) else 'upgrade'].format(title=flight_title(config).replace(' -> ', ' \u2192 '))
+    lines = [f'# {t["title"][phase]}: {subject}', '',
              f'- {t["project"]}: {project_name(flight)}',
              f'- {t["date"]}: {day(now(), lang)}',
              f'- {t["period"]}: {day(start, lang)} - {day(end, lang)}',
              f'- {t["status"]}: **{status_line(flight, phase, t)}**', '',
              f'## {t["summary"]}', '', narrative(flight, phase, 'pm', lang) or t['summary_missing'], '']
 
-    items = checklist_items(scope)
+    items = checklist_items('preflight' if checking(flight) and phase == 'final' else scope, config)
     states = {i['id']: log['checklist'].get(i['id'], {'status': 'open'}) for i in items}
     counts = {k: sum(1 for s in states.values() if s['status'] == k) for k in ('done', 'no', 'na', 'handoff', 'open')}
     measurements = phase_list(flight, 'measurements', scope)
@@ -225,12 +253,21 @@ def pm_report(flight: Flight, phase: str, lang: str) -> str:
         done.append(t['deps'].format(n=len(deps), breaking=sum(1 for d in deps.values() if 'Breaking' in d['summary'] or 'breaking' in d['summary'])))
     schema = [e for e in phase_list(flight, 'schema_runs', scope) if e['action'] == 'apply']
     if schema:
-        done.append(t['schema'].format(text=t['schema_text'].format(n=sum(e.get('statements') or 0 for e in schema))))
+        counted = [e for e in schema if e.get('statements') is not None]
+        text = t['schema_text'].format(n=sum(e['statements'] for e in counted)) if counted else t['schema_unknown']
+        done.append(t['schema'].format(text=text))
+    touch = [e for e in phase_list(flight, 'touchpoints', scope) if e.get('verified')]
+    if touch:
+        last = touch[-1]
+        done.append(t['touchpoints'].format(total=last['total'], attention=last['attention'], manual=last.get('manual', 0)))
     lines += [f'## {t["done"]}', ''] + [f'- {line}' for line in done] + ['']
 
     risks = [(i, states[i['id']]) for i in items if states[i['id']]['status'] == 'no']
     lines += [f'## {t["risks"]}', '']
-    lines += [f'- **{i.get(title_key) or i["title"]}**: {s.get("note") or ""}' for i, s in risks] or [f'- {t["no_risks"]}']
+    risk_lines = [f'- **{i.get(title_key) or i["title"]}**: {s.get("note") or ""}' for i, s in risks]
+    for name, alias in sorted(((config.get('packages') or {}).get('aliases') or {}).items()):
+        risk_lines.append('- ' + t['alias_risk'].format(name=name, to=config['packages']['to'], alias=alias))
+    lines += risk_lines or [f'- {t["no_risks"]}']
     lines.append('')
     team = [(i, states[i['id']]) for i in items if states[i['id']]['status'] == 'handoff']
     lines += [f'## {t["team"]}', '']
@@ -240,7 +277,9 @@ def pm_report(flight: Flight, phase: str, lang: str) -> str:
     lines += [f'## {t["next"]}', '']
     gate = log.get('gates', {}).get(phase) if phase != 'final' else None
     next_date = day(config.get('facts', {}).get(config['target'], {}).get('support', {}).get('maintained_until'), lang)
-    if phase == 'final':
+    if checking(flight) and log.get('phase') == 'landed':
+        lines.append(t['next_check'])
+    elif phase == 'final':
         key = 'postflight' if log.get('phase') == 'landed' else None
         lines.append(t['next_go'][key].format(flight=config['branches']['flight'], next=next_date) if key else t['next_pending'])
     elif not gate:
@@ -270,12 +309,12 @@ def dev_report(flight: Flight, phase: str) -> str:
     t = T['en']
     start, end = window(flight, phase)
     gate = log.get('gates', {}).get(phase)
-    lines = [f'# {t["title"][phase]} (developer): TYPO3 {config.get("source_installed")} -> {config["target"]}', '',
+    lines = [f'# {t["title"][phase]} (developer): {flight_title(config)}', '',
              f'- Period: {start or "-"} to {end or "-"}',
              f'- Gate: ' + (f'{gate["gate"]} {gate["decision"].upper()} by {gate["by"]}: {gate["note"]}' if gate else 'pending'), '',
              '## Summary', '', narrative(flight, phase, 'dev', 'en') or '_Not written yet._', '',
              '## Checklist', '', '| Item | Status | Owner | Note / evidence |', '|---|---|---|---|']
-    for item in checklist_items(phase):
+    for item in checklist_items(phase, config):
         state = log['checklist'].get(item['id'], {'status': 'open'})
         note = ' '.join(filter(None, [state.get('note'), f'({state["evidence"]})' if state.get('evidence') else None])).replace('|', '/')
         lines.append(f'| `{item["id"]}` {item["title"]} | {state["status"]} | {item["owner"]} | {note} |')
@@ -298,6 +337,12 @@ def dev_report(flight: Flight, phase: str) -> str:
         lines += ['## Third-party dependencies', '']
         lines += [f'- {n} {d["from"] or "(new)"} -> {d["to"]}: {d["summary"]} ({d["report"]})' for n, d in sorted(deps.items())]
         lines.append('')
+    touch = phase_list(flight, 'touchpoints', phase)
+    if touch:
+        lines += ['## Modifications of third-party packages (touchpoints)', '']
+        lines += [f'- {e["label"]}: {e["total"]} touchpoint(s)' + (f', {e["attention"]} need attention, {e.get("manual", 0)} by hand' if e['verified'] else ', not verified')
+                  + f' @ {e["commit"]} (' + ', '.join(f'{n} {c}' for n, c in e['packages'].items()) + ')' for e in touch]
+        lines += ['', 'Details of the latest run: `' + flight.rel(flight.dir / 'touchpoints.json') + '`', '']
     schema = phase_list(flight, 'schema_runs', phase)
     if schema:
         lines += ['## Database schema', ''] + [f'- {e["label"]}: {e["action"]} via {e["provider"]} ({e["types"]}): {statements_cell(e)}, exit {e["exit"]}'
@@ -315,7 +360,8 @@ def dev_report(flight: Flight, phase: str) -> str:
 
 def cmd_report(args) -> None:
     flight = Flight.load()
-    phases = PHASES + ('final',) if args.phase == 'all' else (args.phase,)
+    all_phases = ('preflight', 'final') if checking(flight) else PHASES + ('final',)
+    phases = all_phases if args.phase == 'all' else (args.phase,)
     target = flight.dir / 'reports'
     target.mkdir(parents=True, exist_ok=True)
     written = []

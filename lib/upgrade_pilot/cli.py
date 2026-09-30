@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from . import changelog, checklist, commit, contacts, context, deps, init, instruments, platform, reports, rules, schema
+from . import changelog, checklist, commit, contacts, context, deps, init, instruments, platform, reports, rules, schema, touchpoints
 
 
 def build() -> argparse.ArgumentParser:
@@ -16,6 +16,14 @@ def build() -> argparse.ArgumentParser:
 
     p = sub.add_parser('init', help='detect the project and open a flight log in .upgrade-pilot/')
     p.add_argument('--target', help='target major.minor, e.g. 13.4')
+    p.add_argument('--scope', choices=['core', 'packages'], default='core',
+                   help='core: TYPO3 core upgrade (default). packages: upgrade or check selected packages without the core')
+    p.add_argument('--package', action='append', default=[], help='packages scope: name or glob, e.g. acme/shop-* (repeatable)')
+    p.add_argument('--to', help='packages scope: target version, constraint or branch (^3.0, 2.4.0, dev-main, 2.x-dev)')
+    p.add_argument('--label', help='packages scope: short name for the branches (default from package and target)')
+    p.add_argument('--check-only', action='store_true', help='assessment only: the flight ends after the pre-flight gate')
+    p.add_argument('--dev-stability', choices=['minimum-stability', 'none'],
+                   help='development target: allow it through minimum-stability dev + prefer-stable, or none (already allowed)')
     p.add_argument('--detect', action='store_true', help='only print what the project offers (runtimes, commit style evidence) as JSON')
     p.add_argument('--runtime', choices=['ddev', 'direnv', 'local', 'custom'], help='where PHP and composer run (default: detected)')
     p.add_argument('--source', help='source major.minor (default: from composer.lock)')
@@ -91,6 +99,8 @@ def build() -> argparse.ArgumentParser:
 
     p = sub.add_parser('bump', help='raise core constraints: show, probe (dry-run resolve, then restore) or apply')
     p.add_argument('mode', choices=['show', 'probe', 'apply'])
+    p.add_argument('--alias', action='append', metavar='NAME=VERSION',
+                   help='packages scope: require NAME as "<target> as VERSION" in the root composer.json (inline alias, remembered for apply)')
     p.set_defaults(func=platform.cmd_bump)
 
     p = sub.add_parser('deps', help='third-party packages that move, and their changelogs, upgrade notes and wizards')
@@ -103,7 +113,13 @@ def build() -> argparse.ArgumentParser:
     c.add_argument('--all', action='store_true', help='every moving package, not only extensions, majors and new ones')
     c.add_argument('--from', dest='from_version', help='with one --package: inspect this range without a deps list')
     c.add_argument('--to', dest='to_version')
+    c.add_argument('--no-rendered', action='store_true', help='skip the rendered documentation on docs.typo3.org')
     c.set_defaults(func=deps.cmd_docs)
+    c = dsub.add_parser('touchpoints', help='where own extensions, sitepackages and config modify or use third-party packages')
+    c.add_argument('--package', action='append', help='package (repeatable, default: the scope or the moving TYPO3 extensions)')
+    c.add_argument('--verify', action='store_true', help='check every touchpoint against the target release (needs deps docs first)')
+    c.add_argument('--label', default='touchpoints')
+    c.set_defaults(func=touchpoints.cmd_touchpoints)
 
     p = sub.add_parser('schema', help='database schema: detect tooling, dry run, apply (TYPO3 Console or core)')
     p.add_argument('action', choices=['check', 'plan', 'apply'])
@@ -191,6 +207,7 @@ def build() -> argparse.ArgumentParser:
     p.add_argument('--related', action='append', help='extra issue reference for a Related: line (repeatable)')
     p.add_argument('--breaking', action='store_true', help='mark as breaking ([!!!])')
     p.add_argument('--into-composer-commit', action='store_true', help='fold composer-only changes into the branch\'s composer commit')
+    p.add_argument('--path', action='append', help='commit only changes below this path (repeatable). Keeps commits small when several changes are pending')
     p.add_argument('--dry-run', action='store_true', help='print the message, commit nothing')
     p.set_defaults(func=commit.cmd_commit)
 

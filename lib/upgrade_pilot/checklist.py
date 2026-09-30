@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .core import DATA_DIR, Flight, die, git_branch, load_json, now
+from .core import Flight, checklist_file, die, flight_title, git_branch, load_json, now
 
 PHASES = ['preflight', 'flight', 'postflight']
 NEXT_PHASE = {'preflight': 'flight', 'flight': 'postflight', 'postflight': 'landed'}
@@ -10,13 +10,13 @@ STATUSES = ['open', 'done', 'no', 'na', 'handoff']
 MARK = {'open': '[ ]', 'done': '[x]', 'no': '[-]', 'na': '[~]', 'handoff': '[?]'}
 
 
-def spec() -> dict:
-    return load_json(DATA_DIR / 'checklist.json')
+def spec(config: dict | None = None) -> dict:
+    return load_json(checklist_file(config))
 
 
-def items_of(phase: str) -> list[tuple[str, dict]]:
+def items_of(phase: str, config: dict | None = None) -> list[tuple[str, dict]]:
     out = []
-    for section in spec()['phases'][phase]['sections']:
+    for section in spec(config)['phases'][phase]['sections']:
         for item in section['items']:
             out.append((section['title'], item))
     return out
@@ -56,13 +56,13 @@ def cmd_item(args) -> None:
 
 
 def blockers(flight: Flight, phase: str) -> list[tuple[str, dict]]:
-    return [(item['id'], item) for _, item in items_of(phase) if flight.log['checklist'][item['id']]['status'] == 'open']
+    return [(item['id'], item) for _, item in items_of(phase, flight.config) if flight.log['checklist'][item['id']]['status'] == 'open']
 
 
 def cmd_gate(args) -> None:
     flight = Flight.load()
     phase = args.phase
-    gate = spec()['phases'][phase]['gate']
+    gate = spec(flight.config)['phases'][phase]['gate']
     if args.decision == 'show':
         print(f'Gate "{gate["title"]}" ({phase})')
         print('  GO when:')
@@ -75,7 +75,7 @@ def cmd_gate(args) -> None:
         print(f'  open checklist items: {len(open_items)}')
         for item_id, item in open_items:
             print(f'    {item_id:<28} ({item["owner"]}) {item["title"]}')
-        handoff = [i for _, i in items_of(phase) if flight.log['checklist'][i['id']]['status'] == 'handoff']
+        handoff = [i for _, i in items_of(phase, flight.config) if flight.log['checklist'][i['id']]['status'] == 'handoff']
         if handoff:
             print(f'  waiting for a human: {", ".join(i["id"] for i in handoff)}')
         return
@@ -94,7 +94,8 @@ def cmd_gate(args) -> None:
         'branch': git_branch(flight.root),
     }
     if args.decision == 'go':
-        flight.log['phase'] = NEXT_PHASE[phase]
+        check_only = flight.config.get('mode') == 'check' and phase == 'preflight'
+        flight.log['phase'] = 'landed' if check_only else NEXT_PHASE[phase]
     flight.event(f'Gate {gate["title"]}: {args.decision.upper()} by {by}. {args.note}')
     flight.save()
     print(f'Gate "{gate["title"]}": {args.decision.upper()} ({by}). Phase is now {flight.log["phase"]}.')
@@ -112,10 +113,10 @@ def cmd_status(args) -> None:
     flight = Flight.load()
     config, log = flight.config, flight.log
     phase = log.get('phase')
-    print(f'TYPO3 {config.get("source_installed") or config["source"]} -> {config["target"]}   phase: {phase}   branch: {git_branch(flight.root)}')
+    print(f'{flight_title(config)}   phase: {phase}   branch: {git_branch(flight.root)}')
     print(f'flight log: {flight.rel(flight.dir / "FLIGHT-LOG.md")}')
     for name in PHASES:
-        items = items_of(name)
+        items = items_of(name, config)
         counts = {s: 0 for s in STATUSES}
         for _, item in items:
             counts[log['checklist'][item['id']]['status']] += 1

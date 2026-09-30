@@ -25,7 +25,7 @@ import textwrap
 from pathlib import Path
 
 from . import gitops
-from .core import Flight, die, git, git_branch, git_dirty, now, sh
+from .core import Flight, die, flight_title, git, git_branch, git_dirty, now, sh
 
 PLACEHOLDER = re.compile(r'\{ISSUE-\d{2,}\}')
 
@@ -189,7 +189,7 @@ def issue_for_step(flight: Flight, step: str, title: str, description: str) -> s
 
 def issues_markdown(flight: Flight) -> str:
     policy = flight.config.get('commit', {})
-    lines = [f'# Issues for the upgrade TYPO3 {flight.config.get("source_installed")} -> {flight.config["target"]}', '',
+    lines = [f'# Issues for the upgrade {flight_title(flight.config)}', '',
              f'Mode: {policy.get("issue_mode")}' + (f', parent {policy["issue"]}' if policy.get('issue') else '')
              + (f', tracker {policy.get("tracker")}' if policy.get('tracker') and policy.get('tracker') != 'none' else ''), '']
     if policy.get('issue_mode') == 'placeholder':
@@ -372,15 +372,19 @@ def fold_into_composer_commit(flight: Flight, commands: list[str]) -> str | None
 
 def create_commit(flight: Flight, tag: str, subject: str, body: str, step: str | None = None, step_title: str | None = None,
                   related: list[str] | None = None, breaking: bool = False, into_composer: bool = False,
-                  dry_run: bool = False) -> str | None:
+                  dry_run: bool = False, paths: list[str] | None = None) -> str | None:
     changes = changed_files(flight)
+    if paths:
+        changes = [c for c in changes if any(c == p.rstrip('/') or c.startswith(p.rstrip('/') + '/') for p in paths)]
     if not changes:
-        die('nothing to commit')
+        die('nothing to commit' + (' below ' + ', '.join(paths) if paths else ''))
     composer_touched = sorted(set(changes) & composer_paths(flight))
     pending = [c['cmd'] for c in flight.log.get('pending_commands', []) if c.get('branch') == git_branch(flight.root)]
     if composer_touched and not pending:
         die('composer files changed without a recorded command: ' + ', '.join(composer_touched)
             + '. Make composer changes with "upgrade-pilot composer <args>" or "upgrade-pilot run -- jq ..." so the commit can name them.')
+    if into_composer and paths:
+        die('--into-composer-commit folds the whole change set and cannot be combined with --path')
     if into_composer and not dry_run:
         folded = fold_into_composer_commit(flight, pending)
         if folded:
@@ -402,10 +406,12 @@ def create_commit(flight: Flight, tag: str, subject: str, body: str, step: str |
     message_file = flight.dir / 'tmp' / 'commit-message.txt'
     message_file.parent.mkdir(parents=True, exist_ok=True)
     message_file.write_text(message, encoding='utf-8')
-    rc, out, _ = sh('git add -A', flight.root)
+    # With paths, only those are staged and committed. Everything else stays in the working tree for a later commit.
+    scope = ' -- ' + ' '.join(shlex.quote(p) for p in paths) if paths else ''
+    rc, out, _ = sh('git add -A' + scope, flight.root)
     if rc != 0:
         die(out)
-    rc, out, _ = sh(f'git commit -q -F {message_file}', flight.root)
+    rc, out, _ = sh(f'git commit -q -F {message_file}' + scope, flight.root)
     if rc != 0:
         die(out)
     sha = gitops.full(flight.root, 'HEAD')
@@ -435,4 +441,4 @@ def read_body(args) -> str:
 def cmd_commit(args) -> None:
     flight = Flight.load()
     create_commit(flight, args.tag, args.subject, read_body(args), args.step, args.step_title, args.related or [],
-                  args.breaking, args.into_composer_commit, args.dry_run)
+                  args.breaking, args.into_composer_commit, args.dry_run, args.path or None)

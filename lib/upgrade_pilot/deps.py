@@ -29,6 +29,10 @@ GUIDE_FILE = re.compile(r'(^|/)(Documentation|docs?)/(.*/)?[^/]*(upgrad|migrat|u
 TYPO3_CHANGELOG = re.compile(r'(^|/)Documentation/Changelog/(\d+(?:\.\d+)*(?:\.x)?)/([A-Za-z]+)-[^/]*\.rst$')
 WIZARD_PATH = re.compile(r'(^|/)Classes/(.*/)?(Upgrade|Upgrades|Update|Updates|Wizard|Wizards)/[^/]+\.php$')
 WIZARD_ID = re.compile(r'#\[UpgradeWizard\(\s*[\'"]([^\'"]+)[\'"]')
+# A wizard class kept out of the service container is not offered by the core. The package lets the project
+# decide whether to register it, and says when in the class docblock.
+EXCLUDED = re.compile(r'#\[\s*\\?(?:Symfony\\Component\\DependencyInjection\\Attribute\\)?Exclude\b')
+DOCBLOCK = re.compile(r'/\*\*(.*?)\*/', re.S)
 SKIP_PATH = re.compile(r'(^|/)(vendor|node_modules|\.Build|Tests|tests|Build)/')
 VERSION_TOKEN = re.compile(r'v?(\d+)(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?')
 VERSION_HEADING = re.compile(r'^\W*(?:(?:version|release|upgrade(?:\s+to)?|upgrading(?:\s+to)?|changes\s+in)\s+)?\[?(v?\d+(?:\.(?:\d+|x|\*)){0,2})\]?(?=$|[\s\-:(,)\]])', re.I)
@@ -43,11 +47,14 @@ def clean(version: str) -> str:
     return version.strip().lstrip('vV')
 
 
-def kind_of(old: str | None, new: str | None) -> str:
+def kind_of(old: str | None, new: str | None, alias: str | None = None) -> str:
+    """added, removed, major, minor, patch, downgrade or changed. A development target is compared by its alias."""
     if not old:
         return 'added'
     if not new:
         return 'removed'
+    if not numeric(new) and alias and numeric(alias):
+        new = alias
     if not numeric(old) or not numeric(new):
         return 'changed'
     a, b = vtuple(clean(old)), vtuple(clean(new))
@@ -118,7 +125,8 @@ def split_version(side: str, text: str | None) -> dict:
 
 
 def numeric(version: str | None) -> bool:
-    return bool(version and re.match(r'^\d', clean(version)))
+    """A comparable release. Development versions (2.x-dev, 2.4.x-dev, dev-main) are not, their alias is."""
+    return bool(version and re.match(r'^\d', clean(version)) and not re.search(r'(-dev|@dev)$', clean(version)))
 
 
 def lock_at(flight: Flight, ref: str) -> dict[str, dict]:
@@ -180,7 +188,8 @@ def classify(flight: Flight, moves: list[dict], before: dict[str, dict]) -> list
         if name.startswith(CORE_PREFIX) or name in own or name == 'php' or name.startswith('ext-'):
             continue
         meta = after.get(name) or before.get(name) or {}
-        out.append({**move, 'type': meta.get('type'), 'kind': kind_of(move['from'], move['to']),
+        alias = comparable(flight_alias(flight, name, move['to']))
+        out.append({**move, 'type': meta.get('type'), 'kind': kind_of(move['from'], move['to'], alias),
                     'abandoned': meta.get('abandoned'), 'direct': name in direct, 'used': name in used})
     return out
 
@@ -264,9 +273,38 @@ class Tree:
         return (self.directory / path).read_text(encoding='utf-8', errors='replace')
 
 
+def flight_alias(flight: Flight, name: str, version: str | None) -> str | None:
+    """The alias the flight knows for a development target: the inline alias given to bump, else the declared branch alias."""
+    scope = flight.config.get('packages') or {}
+    if not version or scope.get('to') != version:
+        return None
+    inline = (scope.get('aliases') or {}).get(name)
+    if inline:
+        return inline
+    declared = (((flight.config.get('facts') or {}).get('packages') or {}).get('packages', {}).get(name) or {}).get('branch_alias') or {}
+    return next(iter(declared.values())) if len(declared) == 1 else None
+
+
+def comparable(alias: str | None) -> str | None:
+    """2.4.x-dev -> 2.4.999: sorts after every 2.4 release and before 2.5."""
+    match = re.match(r'^v?(\d+)\.(\d+)', alias or '')
+    return f'{match.group(1)}.{match.group(2)}.999' if match else None
+
+
+def alias_version(meta: dict, version: str | None) -> str | None:
+    """A development version's branch alias as a comparable version: dev-main with 3.0.x-dev -> 3.0.999."""
+    if not version or numeric(version):
+        return None
+    aliases = (meta.get('extra') or {}).get('branch-alias') or {}
+    alias = aliases.get(clean(version)) or aliases.get(version) or (next(iter(aliases.values())) if len(aliases) == 1 else None)
+    match = re.match(r'^v?(\d+)\.(\d+)', alias or '')
+    return f'{match.group(1)}.{match.group(2)}.999' if match else None
+
+
 def resolve_trees(flight: Flight, move: dict, before: dict[str, dict], after: dict[str, dict]) -> tuple[Tree | None, Tree | None, str]:
     name = move['name']
     new_meta = composer_meta(flight, name, move['to'], after)
+    move['_meta'] = new_meta
     old_meta = composer_meta(flight, name, move['from'], before) if move['from'] else {}
     source = new_meta.get('source') or {}
     if source.get('type') == 'git' and source.get('url'):
@@ -383,6 +421,20 @@ def wizards(tree: Tree | None, files: list[str]) -> dict[str, str]:
     return out
 
 
+def opt_in_wizards(tree: Tree | None, found: dict[str, str]) -> dict[str, str]:
+    """Wizards excluded from the container, with the class docblock that says when a project registers them."""
+    out = {}
+    for identifier, path in found.items():
+        text = tree.read(path) if tree else ''
+        if not EXCLUDED.search(text):
+            continue
+        head = text[:text.find('#[UpgradeWizard')] if '#[UpgradeWizard' in text else text
+        blocks = DOCBLOCK.findall(head)
+        doc = '\n'.join(re.sub(r'^\s*\* ?', '', line) for line in blocks[-1].splitlines()).strip() if blocks else ''
+        out[identifier] = doc[:4000]
+    return out
+
+
 def hosting_path(url: str) -> tuple[str, str] | None:
     """('github.com', 'owner/repo') from https or ssh git URLs."""
     match = re.match(r'^(?:https?://(?:[^@/]+@)?|git@|ssh://git@)([^/:]+)[/:](.+?)(?:\.git)?/?$', url)
@@ -445,7 +497,9 @@ def breaking_commits(tree_old: Tree | None, tree_new: Tree) -> list[str]:
 def inspect(flight: Flight, move: dict, before: dict, after: dict, own: dict[str, list[str]]) -> dict:
     old_tree, new_tree, origin = resolve_trees(flight, move, before, after)
     result = {**move, 'origin': origin, 'at': now(), 'typo3_changelog': [], 'notes': [], 'guides': [],
-              'commits_breaking': [], 'releases': [], 'wizards_new': {}, 'hits': 0}
+              'commits_breaking': [], 'releases': [], 'wizards_new': {}, 'hits': 0,
+              'repo': str(new_tree.repo) if new_tree and new_tree.repo else None,
+              'old_ref': old_tree.ref if old_tree else None, 'new_ref': new_tree.ref if new_tree else None}
     if not new_tree:
         return result
     files = [f for f in new_tree.files() if not SKIP_PATH.search(f)]
@@ -501,10 +555,28 @@ def inspect(flight: Flight, move: dict, before: dict, after: dict, own: dict[str
     new_wizards = wizards(new_tree, files)
     old_wizards = wizards(old_tree, old_tree.files()) if old_tree else {}
     result['wizards_new'] = {k: v for k, v in new_wizards.items() if k not in old_wizards}
+    result['wizards_opt_in'] = opt_in_wizards(new_tree, result['wizards_new'])
     release_text = '\n'.join(r['body'] for r in result['releases'])
     release_hits = own_hits({'title': 'releases', 'php': literals(release_text), 'typoscript': []}, own) if release_text else []
     result['release_hits'] = release_hits
-    result['hits'] = sum(len(e['hits']) for e in result['typo3_changelog'] + result['notes'] + result['guides']) + len(release_hits)
+    meta = move.pop('_meta', {}) or {}
+    result['alias'] = comparable(flight_alias(flight, move['name'], new)) or alias_version(meta, new)
+    result['rendered'] = None
+    if (move.get('type') or meta.get('type')) == 'typo3-cms-extension' and not getattr(inspect, 'no_rendered', False):
+        from .docsite import read_manual
+
+        def version_in_range(directory: str, installed: str, target: str) -> bool:
+            if not numeric(target) or not numeric(installed):
+                return True  # a development target without alias: nothing to filter by, read all
+            iv = interval(directory)
+            return bool(iv) and in_range(iv, installed, target)
+        rendered = read_manual(move['name'], old, new, result['alias'], version_in_range, flight.dir / 'cache' / 'docs',
+                               skip_changelog=bool(result['typo3_changelog']))
+        rendered_text = '\n'.join(p['text'] for p in rendered['pages'])
+        rendered['hits'] = own_hits({'title': 'rendered', 'php': literals(rendered_text), 'typoscript': []}, own) if rendered_text else []
+        result['rendered'] = rendered
+    rendered_hits = len((result.get('rendered') or {}).get('hits') or [])
+    result['hits'] = sum(len(e['hits']) for e in result['typo3_changelog'] + result['notes'] + result['guides']) + len(release_hits) + rendered_hits
     return result
 
 
@@ -516,7 +588,13 @@ def package_markdown(result: dict) -> str:
     if result.get('abandoned'):
         lines += [f'**Abandoned.** Replacement: {result["abandoned"] if isinstance(result["abandoned"], str) else "none suggested"}', '']
     if result['wizards_new']:
-        lines += ['## New upgrade wizards in this range', ''] + [f'- `{k}` ({v})' for k, v in result['wizards_new'].items()] + ['']
+        lines += ['## New upgrade wizards in this range', ''] + [
+            f'- `{k}` ({v})' + (' **opt-in: excluded from the service container, the core does not offer it**'
+                                if k in result.get('wizards_opt_in', {}) else '')
+            for k, v in result['wizards_new'].items()] + ['']
+        for identifier, doc in result.get('wizards_opt_in', {}).items():
+            lines += [f'### Opt-in wizard `{identifier}`', '',
+                      'Decide per project whether to register it. The class documentation:', '', '```text', doc or '(none)', '```', '']
     if result['commits_breaking']:
         lines += ['## Commits flagged as breaking', ''] + [f'- {c}' for c in result['commits_breaking']] + ['']
     for entry in result['typo3_changelog']:
@@ -535,11 +613,25 @@ def package_markdown(result: dict) -> str:
             lines += ['', f'### {release["tag"]}' + (f': {release["name"]}' if release['name'] and release['name'] != release['tag'] else ''), '',
                       release['body'].strip() or '_empty_']
         lines.append('')
+    rendered = result.get('rendered') or {}
+    if rendered.get('manual'):
+        lines += [f'## Rendered documentation: {rendered["manual"]}', '',
+                  f'Pages from {rendered["source"]}' + (f', compared with {rendered["compared_with"]}' if rendered.get('compared_with') else
+                                                       ', no manual of the installed version to compare with') + '.'
+                  + (' Changelog pages are left out, the repository changelog above has the same entries.' if rendered.get('skipped_changelog') else ''), '']
+        lines += [f'- own code: {h["file"]}:{h["line"]} ({h["needle"]})' for h in rendered.get('hits', [])]
+        for page in rendered['pages']:
+            lines += ['', f'### {page["title"] or page["path"]} ({page["format"]})', '', f'<{page["url"]}>', '', page['text'].strip() or '_empty_']
+        lines.append('')
+    elif rendered.get('tried'):
+        lines += ['## Rendered documentation', '', 'No manual found on docs.typo3.org for this version. Tried: '
+                  + ', '.join(rendered['tried']), '']
     for guide in result['guides']:
         lines += [f'## Guide: {guide["file"]}', '']
         lines += [f'- own code: {h["file"]}:{h["line"]} ({h["needle"]})' for h in guide['hits']]
         lines += ['', guide['text'].strip(), '']
-    if not (result['typo3_changelog'] or result['notes'] or result['guides'] or result['commits_breaking'] or result.get('releases')):
+    if not (result['typo3_changelog'] or result['notes'] or result['guides'] or result['commits_breaking'] or result.get('releases')
+            or (result.get('rendered') or {}).get('pages')):
         lines += ['_No changelog, upgrade notes or breaking commits found for this range. Check the project page or '
                   'release notes on the hosting platform by hand._', '']
     return '\n'.join(lines) + '\n'
@@ -557,13 +649,16 @@ def summary_line(result: dict) -> str:
         parts.append(f'{sum(len(n["sections"]) for n in result["notes"])} note section(s)' + (f' ({notes_breaking} breaking line(s))' if notes_breaking else ''))
     if result['guides']:
         parts.append(f'{len(result["guides"])} guide(s)')
+    if (result.get('rendered') or {}).get('pages'):
+        parts.append(f'{len(result["rendered"]["pages"])} rendered doc page(s) ({result["rendered"]["version"]})')
     if result.get('releases'):
         releases_breaking = sum(len(r['breaking']) for r in result['releases'])
         parts.append(f'{len(result["releases"])} release note(s)' + (f' ({releases_breaking} breaking line(s))' if releases_breaking else ''))
     if result['commits_breaking']:
         parts.append(f'{len(result["commits_breaking"])} breaking commit(s)')
     if result['wizards_new']:
-        parts.append(f'{len(result["wizards_new"])} new wizard(s)')
+        opt_in = len(result.get('wizards_opt_in', {}))
+        parts.append(f'{len(result["wizards_new"])} new wizard(s)' + (f' ({opt_in} opt-in)' if opt_in else ''))
     if result['hits']:
         parts.append(f'{result["hits"]} hit(s) in own code')
     return '; '.join(parts) if parts else 'nothing documented found'
@@ -610,6 +705,7 @@ def cmd_docs(args) -> None:
         after = locked_packages(flight.root)
         moves = selected(deps['moves'], args.package, args.all)
     own = own_files(flight)
+    inspect.no_rendered = bool(getattr(args, 'no_rendered', False))
     out_dir = flight.dir / 'deps'
     out_dir.mkdir(parents=True, exist_ok=True)
     adhoc = bool(args.package and args.from_version and args.to_version)
@@ -624,10 +720,12 @@ def cmd_docs(args) -> None:
         print(f'    source: {result["origin"]}')
         print(f'    {line}')
         for identifier, path in result['wizards_new'].items():
-            print(f'    new wizard: {identifier} ({path})')
+            opt_in = ' [opt-in, not registered by the package: read its docblock and decide]' if identifier in result.get('wizards_opt_in', {}) else ''
+            print(f'    new wizard: {identifier} ({path}){opt_in}')
         print(f'    read: {flight.rel(report)}')
         docs[move['name']] = {'from': move['from'], 'to': move['to'], 'summary': line, 'report': flight.rel(report),
-                              'wizards_new': list(result['wizards_new']), 'hits': result['hits'], 'at': now()}
+                              'wizards_new': list(result['wizards_new']),
+                              'wizards_opt_in': list(result.get('wizards_opt_in', {})), 'hits': result['hits'], 'at': now()}
     if deps and not adhoc:
         flight.log['dependencies'] = deps
     flight.event(f'deps docs: {len(moves)} package(s) read' + (' (ad hoc, not part of the flight\'s dependency list)' if adhoc else ''))

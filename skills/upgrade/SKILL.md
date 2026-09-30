@@ -1,6 +1,6 @@
 ---
 name: upgrade
-description: Fly a TYPO3 major upgrade (for example 12.4 to 13.4, or 13.4 to 14.x) of a composer project or extension in three gated phases, pre-flight, flight and post-flight, with a tracked flight log, instrument tests for core contact points, Rector/Fractor applied one rule per commit, commits in the project's style with issue references, and reports for developers and project managers. Use when the user wants to plan, start, resume or check the status of a TYPO3 core upgrade.
+description: Fly a TYPO3 major upgrade (for example 12.4 to 13.4, or 13.4 to 14.x) of a composer project or extension in three gated phases, pre-flight, flight and post-flight, with a tracked flight log, instrument tests for core contact points, Rector/Fractor applied one rule per commit, commits in the project's style with issue references, and reports for developers and project managers. Also flies updates of selected third-party packages without a core upgrade, or only checks them (see the packages skill). Use when the user wants to plan, start, resume or check the status of a TYPO3 core upgrade or a package update.
 when_to_use: >-
   Requests like upgrade this project to TYPO3 13, prepare the v14 upgrade,
   where are we with the upgrade, continue the upgrade, run the upgrade checklist.
@@ -16,6 +16,8 @@ An upgrade is flown, not hoped for. Three phases, each ending in a gate:
 | 1 Pre-flight: nothing touches the target version | `fly-the-upgrade:preflight` (+ `fly-the-upgrade:instruments`) | Go / No-Go |
 | 2 Flight: the fixed sequence, on the target version | `fly-the-upgrade:flight` | Cleared to hand over |
 | 3 Post-flight: sweep again, remove ferry equipment, debrief | `fly-the-upgrade:postflight` | Debriefed |
+
+A flight has a **scope**: `core` (the default, the table above) or `packages`, selected third-party packages on an unchanged core, flown in the same phases or only checked. For the packages scope, `fly-the-upgrade:packages` says what differs.
 
 Rector and Fractor are always run through `fly-the-upgrade:rule-by-rule`: one rule, one review, one measurement, one commit. The full process with every command is in the plugin's `docs/PROCESS.md` (`${CLAUDE_PLUGIN_ROOT}/docs/PROCESS.md`).
 
@@ -43,6 +45,7 @@ Never edit `flightlog.json` or `FLIGHT-LOG.md` by hand. Use the CLI. Run `upgrad
 
 1. `upgrade-pilot init --detect` prints what the project offers: ddev, an `.envrc` for direnv (in the project or one folder up: installed, allowed, php and composer usable inside it), local PHP and composer, the git host, and how existing commit messages look (TYPO3 tags, `PRJ-123:` keys in subjects, footers).
 2. Ask the user with `AskUserQuestion`, pre-selecting what the detection suggests. Skip a question only if the user already answered it.
+   - **Scope**: TYPO3 core upgrade, update of selected packages, or only a check of selected packages. For the two package variants, continue with the questions of `fly-the-upgrade:packages` (packages or globs, target version or branch, development stability) and its init command.
    - **Runtime**, when more than one is possible: ddev, direnv or local PHP (or a custom exec template). If an `.envrc` exists but is not allowed, say so: the user reviews it and runs `direnv allow` themselves. Never run `direnv allow` yourself, an `.envrc` executes code.
    - **Commit style**: TYPO3 Core style (`[TAG] Subject`, 52 characters, body at 72, no Resolves/Releases footers, issue references as `Related:` lines), YouTrack style (`[TAG] PRJ-123: Subject` with `Related:` lines), or a custom subject template (`{tag}`, `{ref}`, `{subject}`). If the project or the user's instructions already define a style, propose exactly that.
    - **Issue references**: none, one reference for all commits, a parent issue with one issue per step (only if this session can create issues in that tracker, for example a YouTrack MCP server, `gh` or `glab`), or placeholders (`{ISSUE-01}`) collected in `ISSUES.md` for a human to create, which `issues apply` later replaces in the commits. Ask for the reference or parent and the project key.

@@ -12,19 +12,21 @@ three gated phases (pre-flight, flight, post-flight). It consists of:
 | Part | Where | Role |
 |---|---|---|
 | Manifest and marketplace | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | The repository is its own single-plugin marketplace (`source: "./"`) |
-| Skills | `skills/<name>/SKILL.md` | The procedures Claude follows: `upgrade`, `preflight`, `instruments`, `rule-by-rule`, `flight`, `postflight` |
+| Skills | `skills/<name>/SKILL.md` | The procedures Claude follows: `upgrade`, `preflight`, `instruments`, `rule-by-rule`, `flight`, `postflight`, `packages` |
 | Agent | `agents/rule-reviewer.md` | Read-only review of one refactoring rule's diff |
 | Hook | `hooks/hooks.json`, `hooks/guard_base_branch.py` | PreToolUse guard: nothing lands on the base branch while a flight is open |
 | CLI | `bin/upgrade-pilot`, `lib/upgrade_pilot/*.py` | Tracking and tooling the skills drive. `bin/` is on `PATH` while the plugin is enabled |
 | PHP helper | `lib/php/tca-migrations.php` | Headless TCA migration check. Copied into the target project at run time, because containers only mount the project |
-| Data | `data/checklist.json`, `data/templates/*.md` | The checklist of the talk, templates for QRH, MEL, briefing |
+| Data | `data/checklist.json`, `data/checklist-packages.json`, `data/templates/*.md` | The checklist of the talk, the checklist of the packages scope, templates for QRH, MEL, briefing |
 | Tests | `tests/` | Unit tests for parsers, constraint matching and the guard |
 
 CLI modules: `core` (state, runtime wrapper, git), `init` (detection),
 `checklist` (items, gates, status), `instruments` (measure, scan, tca),
 `contacts` (contact points vs tests), `platform` (versions, companion packages,
 bump, snapshots), `schema` (schema tooling detection, dry run, converging apply),
-`deps` (third-party packages that move, their notes by convention, new wizards),
+`deps` (third-party packages that move, their notes by convention, new and opt-in wizards),
+`docsite` (rendered manuals on docs.typo3.org, read as `llms.txt` asks),
+`touchpoints` (where own code and configuration use or modify third-party packages, verified against the target),
 `commit` (message rendering, recorded commands, composer fold, issues), `gitops`
 (plumbing history rewrites), `context` (pre-collected information), `reports`
 (developer and PM reports, en and de),

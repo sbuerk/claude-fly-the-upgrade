@@ -71,6 +71,16 @@ def allows(constraint: str, version: str) -> bool:
     return False
 
 
+def declared_branch_alias(name: str, version: str) -> dict:
+    """Branch aliases a development version declares. composer show does not print extra, Packagist does (best effort)."""
+    try:
+        data = fetch_json(PACKAGIST.format(name=f'{name}~dev'))
+    except Exception:  # not on Packagist, or offline: nothing to compare with
+        return {}
+    entry = next((v for v in expand_minified(data['packages'].get(name, [])) if v.get('version') == version), None)
+    return ((entry or {}).get('extra') or {}).get('branch-alias') or {}
+
+
 def packagist_versions(name: str) -> list[dict]:
     data = fetch_json(PACKAGIST.format(name=name))
     return [v for v in expand_minified(data['packages'][name]) if not v['version'].startswith('dev-')]
@@ -134,8 +144,44 @@ def version_facts(target: str, source_installed: str | None = None, php: str | N
     return facts
 
 
+def versions_packages(flight: Flight) -> None:
+    """Packages scope: does the target fit the installed core and PHP?"""
+    scope = flight.config['packages']
+    core = (load_json(flight.root / 'composer.lock', {}) or {})
+    core_version = next((p['version'].lstrip('v') for s in ('packages', 'packages-dev') for p in core.get(s, [])
+                         if p['name'] == 'typo3/cms-core'), None)
+    php = flight.config.get('platform', {}).get('php')
+    composer = flight.config['runtime']['composer']
+    facts = {}
+    for name in scope['names']:
+        rc, out, _ = sh(f'{composer} show --all --format=json {shlex.quote(name)} {shlex.quote(scope["to"])}', flight.root, merge=False)
+        from .core import extract_json
+        meta = (extract_json(out) or {}) if rc == 0 else {}
+        requires = meta.get('requires') or meta.get('require') or {}
+        alias = (meta.get('extra') or {}).get('branch-alias') or (declared_branch_alias(name, scope['to']) if scope.get('dev') else {})
+        entry = {'version': (meta.get('versions') or [scope['to']])[0], 'core': requires.get('typo3/cms-core'), 'php': requires.get('php'),
+                 'branch_alias': alias, 'abandoned': meta.get('abandoned'), 'source': (meta.get('source') or {}).get('url')}
+        ok_core = entry['core'] is None or core_version is None or allows(entry['core'], core_version)
+        ok_php = entry['php'] is None or php is None or allows(entry['php'], php)
+        entry['fits'] = ok_core and ok_php
+        facts[name] = entry
+        print(f'{name} {scope["installed"].get(name)} -> {scope["to"]}' + (f' (branch alias {", ".join(alias.values())})' if alias else ''))
+        print(f'  requires typo3/cms-core {entry["core"]} (installed {core_version}): {"ok" if ok_core else "NOT satisfied"}')
+        print(f'  requires php {entry["php"]} (runtime {php}): {"ok" if ok_php else "NOT satisfied"}')
+        if alias and scope['to'] not in alias:
+            print(f'  WARNING: the branch alias is declared for {", ".join(alias)}, composer names this version {scope["to"]}: '
+                  'the alias is not applied, constraints of other packages on the aliased version will not match it')
+        if meta == {}:
+            print('  composer could not describe this version: check the name and the target')
+    flight.config.setdefault('facts', {})['packages'] = {'at': now(), 'core': core_version, 'php': php, 'packages': facts}
+    flight.event(f'versions (packages): {sum(1 for f in facts.values() if f["fits"])} of {len(facts)} fit core {core_version} and PHP {php}')
+    flight.save()
+
+
 def cmd_versions(args) -> None:
     flight = Flight.load()
+    if flight.config.get('scope') == 'packages' and not args.target:
+        return versions_packages(flight)
     target = args.target or flight.config['target']
     installed = flight.config.get('source_installed')
     php = flight.config.get('platform', {}).get('php')
@@ -243,8 +289,120 @@ def run_composer(flight: Flight, command: str) -> tuple[int, str]:
     return rc, out
 
 
+def package_changes(flight: Flight) -> tuple[list[str], list[str], list[str]]:
+    """Packages scope: stability commands, require commands, the update command. All runtime-neutral."""
+    scope = flight.config['packages']
+    to = scope['to']
+    stability = []
+    if scope.get('dev') and scope.get('dev_stability') == 'minimum-stability':
+        composer = load_json(flight.root / 'composer.json', {}) or {}
+        if composer.get('minimum-stability') != 'dev':
+            stability.append('composer config minimum-stability dev')
+        if composer.get('prefer-stable') is not True:
+            stability.append('composer config prefer-stable true')
+    changes = []
+    aliases = scope.get('aliases') or {}
+    dirs = ['.'] + [ext['path'] for ext in flight.extensions() if ext['path'] != '.']
+    for directory in dirs:
+        data = load_json(flight.root / directory / 'composer.json', None) or {}
+        for section in ('require', 'require-dev'):
+            for name, constraint in (data.get(section) or {}).items():
+                # Inline aliases only work in the root composer.json, so an own extension keeps the plain target.
+                new = f'{to} as {aliases[name]}' if name in aliases and directory == '.' else to
+                if name in scope['names'] and constraint != new:
+                    changes.append({'dir': '.', 'section': section, 'name': name, 'old': constraint, 'new': new} if directory == '.'
+                                   else {'dir': directory, 'section': section, 'name': name, 'old': constraint, 'new': new})
+    root = load_json(flight.root / 'composer.json', {}) or {}
+    for name, alias in aliases.items():
+        if not any(name in (root.get(s) or {}) for s in ('require', 'require-dev')):
+            changes.append({'dir': '.', 'section': 'require', 'name': name, 'old': None, 'new': f'{to} as {alias}'})
+    if not changes and not any(name in (load_json(flight.root / d / 'composer.json', {}) or {}).get(s, {})
+                               for d in dirs for s in ('require', 'require-dev') for name in scope['names']):
+        die('none of the packages is a direct requirement of the project or an own extension. Name the package that '
+            'pulls them in with --package, or require one of them first')
+    update = 'composer update ' + ' '.join(shlex.quote(n) for n in scope['names']) + ' -W --no-interaction'
+    return stability, require_commands(changes), update
+
+
+def cmd_bump_packages(flight: Flight, args) -> None:
+    aliases = dict(a.split('=', 1) for a in (args.alias or []) if '=' in a)
+    unknown = sorted(set(aliases) - set(flight.config['packages']['names']))
+    if unknown or len(aliases) != len(args.alias or []):
+        die('--alias takes NAME=VERSION for a package of this flight, e.g. acme/shop-base=2.4.x-dev' + (f' (not in the flight: {", ".join(unknown)})' if unknown else ''))
+    if aliases:
+        # Remembered, so that apply repeats what the probe resolved with.
+        flight.config['packages'].setdefault('aliases', {}).update(aliases)
+        flight.save()
+    stability, requires, update = package_changes(flight)
+    commands = stability + requires
+    print('composer commands:')
+    for command in commands + [update]:
+        print(f'  {command}')
+    if args.mode == 'show':
+        return
+    touched = ['composer.json'] + [f'{ext["path"]}/composer.json' for ext in flight.extensions() if ext['path'] != '.']
+    touched = [t for t in touched if (flight.root / t).is_file()]
+    for command in commands:
+        rc, out = run_composer(flight, command)
+        if rc != 0:
+            sh('git checkout -- ' + ' '.join(shlex.quote(t) for t in touched), flight.root)
+            die(f'{command} failed, files restored:\n{out[-2000:]}')
+    if args.mode == 'probe':
+        composer = flight.config['runtime']['composer']
+        rc, out, log = flight.run_host(composer + update[len('composer'):] + ' --dry-run --no-audit', log_name='bump-probe')
+        sh('git checkout -- ' + ' '.join(shlex.quote(t) for t in touched), flight.root)
+        verdict = 'resolves' if rc == 0 else 'does NOT resolve'
+        flight.log.setdefault('probes', []).append({'target': flight.config['packages']['to'], 'exit': rc, 'log': flight.rel(log),
+                                                    'at': now(), 'commands': commands + [update]})
+        flight.event(f'bump probe to {flight.config["packages"]["to"]}: {verdict} (exit {rc})')
+        flight.save()
+        print(f'\nbump probe: {verdict} (exit {rc}). Files restored. Log: {flight.rel(log)}')
+        problems = re.findall(r'(Problem \d+[\s\S]*?)(?=\n\s*Problem \d+|\n\n)', out)
+        for problem in problems[:10]:
+            print('  ' + problem.strip().replace('\n', '\n  '))
+        if rc != 0 and not problems:
+            print(out[-3000:])
+        if rc != 0:
+            alias_hints(flight, out)
+        raise SystemExit(0 if rc == 0 else 1)
+    from .commit import record_command
+    for command in commands:
+        record_command(flight, command)
+    flight.event(f'bump applied for {flight.config["packages"]["to"]}: {len(commands)} composer command(s)')
+    flight.save()
+    print(f'\napplied and recorded for the commit. Next: upgrade-pilot composer {update[len("composer "):]}')
+
+
+def ignored_aliases(facts: dict, to: str) -> dict[str, str]:
+    """Branch aliases declared for another version name than the target: composer does not apply them."""
+    out = {}
+    for name, fact in facts.items():
+        declared = fact.get('branch_alias') or {}
+        if declared and to not in declared:
+            out[name] = ', '.join(f'{k} -> {v}' for k, v in declared.items())
+    return out
+
+
+def alias_hints(flight: Flight, output: str) -> None:
+    """A package of the flight required in a range its development branch does not reach: say why and what helps."""
+    scope = flight.config['packages']
+    facts = (flight.config.get('facts', {}).get('packages') or {}).get('packages', {})
+    ignored = ignored_aliases(facts, scope['to'])
+    for required, constraint in sorted(set(re.findall(r'requires (\S+) (\S+) -> found \1\[[^\]]*\] but it does not match the constraint', output))):
+        if required not in scope['names'] or required in (scope.get('aliases') or {}):
+            continue
+        print(f'\n  {required} {scope["to"]} does not satisfy {constraint}.')
+        if required in ignored:
+            print(f'  Its branch alias ({ignored[required]}) is declared for another version name than {scope["to"]}, so composer does not apply it.')
+            print('  That is a packaging issue to report to the maintainers.')
+        print('  Options: wait for a release, target another branch, or bridge it with an inline alias in the root composer.json')
+        print(f'  (a deliberate, temporary decision): upgrade-pilot bump probe --alias {required}=<version matching {constraint}>')
+
+
 def cmd_bump(args) -> None:
     flight = Flight.load()
+    if flight.config.get('scope') == 'packages':
+        return cmd_bump_packages(flight, args)
     target = flight.config['target']
     if target not in flight.config.get('facts', {}):
         die('run upgrade-pilot versions first, the bump uses its testing-framework and PHP facts')
@@ -288,6 +446,8 @@ def cmd_bump(args) -> None:
             print('  ' + problem.strip().replace('\n', '\n  '))
         if rc != 0 and not problems:
             print(out[-3000:])
+        if rc != 0:
+            alias_hints(flight, out)
         raise SystemExit(0 if rc == 0 else 1)
     from .commit import record_command
     for command in commands:

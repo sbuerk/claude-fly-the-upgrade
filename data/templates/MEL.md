@@ -1,4 +1,4 @@
-# MEL: TYPO3 {source} -> {target}
+# MEL: {title}
 
 Minimum Equipment List. What we knowingly fly with, and until when.
 

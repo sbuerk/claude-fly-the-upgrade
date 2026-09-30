@@ -16,6 +16,7 @@ Green again is the end of the flight, not of the work. Everything found here is 
 
 ## Sweep again, with the new rules
 
+- `pst.touchpoints`: `upgrade-pilot deps touchpoints --verify --label postflight` on the final state. Nothing may be left in `attention`, and `manual` entries carry a note.
 - `upgrade-pilot scan --label postflight`: the scanner now warns about the version after this one. Every remaining finding is either fixed now or goes into the "next flight" list in the report.
 - `upgrade-pilot tca --label postflight`: the migration list changes with the core, a new message here is a new deprecation.
 - `pst.deprecation-log`: locally, enable the deprecation log writer in a settings file that is not committed (for example a git-ignored `config/system/additional.php`: copy it first, restore it byte for byte afterwards):
