@@ -6,6 +6,8 @@ All notable changes to this plugin. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-30
+
 ### Added
 
 - Packages scope: `init --scope packages --package <name|glob> --to <version>`
@@ -146,7 +148,8 @@ All notable changes to this plugin. The format follows
   ddev snapshots, upgrade report.
 - Verified by a test flight TYPO3 12.4.45 to 13.4.35.
 
-[Unreleased]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.3.0...HEAD
+[Unreleased]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.4.0...HEAD
+[0.4.0]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.3.0...fly-the-upgrade--v0.4.0
 [0.3.0]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.2.0...fly-the-upgrade--v0.3.0
 [0.2.0]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.1.0...fly-the-upgrade--v0.2.0
 [0.1.0]: https://github.com/sbuerk/claude-fly-the-upgrade/releases/tag/fly-the-upgrade--v0.1.0
