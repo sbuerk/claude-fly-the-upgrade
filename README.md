@@ -126,6 +126,25 @@ version below and in [CHANGELOG.md](CHANGELOG.md).
 
 ### Upgrade notes
 
+#### 0.3.x to 0.4.0
+
+- **Nothing changes for a running flight unless you use the new parts.** A
+  flight opened with 0.3.x has no scope and stays a core upgrade.
+- **New checklist lines** in the core scope (`fl.third-party-modifications`,
+  `pst.touchpoints`) appear as open in running flights. Answer them with
+  `upgrade-pilot deps touchpoints --verify --label <phase>` before their gate.
+  `pf.your-changes` now also points to `deps touchpoints`.
+- **`init --force` archives** the previous flight to
+  `.upgrade-pilot/archive/<time>-<title>/` instead of leaving its reports, logs
+  and notes in place. Move anything you still need out of the archive, or
+  delete it, it is not read again.
+- **Development versions** (`2.x-dev`, `dev-main`) are compared through their
+  branch alias. A `deps list` or `deps docs` re-run in a running flight can
+  therefore classify such a move differently than before (a minor or major
+  step instead of a downgrade or a plain change).
+- **Selected packages without a core upgrade**: open a new flight with
+  `init --scope packages`, see [docs/SCENARIO-PACKAGES.md](docs/SCENARIO-PACKAGES.md).
+
 #### 0.2.x to 0.3.0
 
 - **New questions at initialization** (runtime, commit style, issue handling,
