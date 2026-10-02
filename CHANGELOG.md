@@ -6,6 +6,8 @@ All notable changes to this plugin. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-02
+
 ### Added
 
 - Pre-analysis: `upgrade-pilot assess` and the skill `assess` run read-only
@@ -189,7 +191,8 @@ All notable changes to this plugin. The format follows
   ddev snapshots, upgrade report.
 - Verified by a test flight TYPO3 12.4.45 to 13.4.35.
 
-[Unreleased]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.4.0...HEAD
+[Unreleased]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.5.0...HEAD
+[0.5.0]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.4.0...fly-the-upgrade--v0.5.0
 [0.4.0]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.3.0...fly-the-upgrade--v0.4.0
 [0.3.0]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.2.0...fly-the-upgrade--v0.3.0
 [0.2.0]: https://github.com/sbuerk/claude-fly-the-upgrade/compare/fly-the-upgrade--v0.1.0...fly-the-upgrade--v0.2.0
