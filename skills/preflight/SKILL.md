@@ -10,7 +10,9 @@ Nothing here touches the target version. The aim is to reach the runway with a k
 
 Read `fly-the-upgrade:upgrade` first if you have not in this session. Use `upgrade-pilot status -v` to see what is open. Record every answer with `upgrade-pilot item <id> <done|no|na|handoff> --note "..." --evidence "..."`.
 
-## 0. Branch
+## 0. Pre-analysis, then branch
+
+`pf.assessment` comes before the branch: run `fly-the-upgrade:assess` if it has not run for this flight (the flight log lists the assessments). Its decisions answer `pf.release-status`: every third-party package has a released version for the target, or a go-live blocker, or the flight is on hold. Do not continue a held flight.
 
 Clean working tree on the base branch, then `git switch -c <preflight branch from config.json>`. Item `fl.branch` is for the flight branch, not this one.
 
@@ -29,6 +31,9 @@ Every commit in this phase goes through `upgrade-pilot commit` or `upgrade-pilot
   - It reads the target *release* from the package's source repository (through composer, so private repositories work with the project's credentials) and compares it with the installed release. Unreleased notes on a branch do not count.
   - Read every report under `.upgrade-pilot/deps/`. Each Breaking or Important entry that touches the project (own code hits are listed, but also configuration, TypoScript, templates, site settings) becomes a QRH row with the package name. Every new upgrade wizard becomes a QRH row for flight step 8. An abandoned package goes to `pf.unowned`.
   - "Nothing documented found" is a finding, not a pass: the maintainer's project page is then a `handoff`. Add packages outside the default selection with `--package <name>` or `--all` when a transitive update worries you.
+- `pf.security`: the assessment's `composer audit` of the installed and of the target graph. Advisories in the installed graph are a reason for the upgrade, advisories left in the target graph go into the QRH with the package that fixes them. Abandoned packages go to `pf.unowned`.
+- `pf.patches`: `upgrade-pilot patches` (the assessment ran it). It reads the patches the way the installed plugin does, `cweagans/composer-patches` 1.x or 2.x or `vaimo/composer-patches`, each with its own syntax, and checks each with `git apply --check` against the target source: `fails` needs a rebase in the flight, `contained` and `retired` patches are removed in the flight, `out of range` means the change is lost unless solved otherwise. Each one that does not simply apply is a QRH row.
+- `pf.delivery`: `upgrade-pilot delivery --label preflight`. PHP versions in CI and deployment outside the target range, `typo3cms` calls, `typo3` commands the instance does not know. Changes to deployment and CI are proposed to the user, the team owns them. A call that fails already today (for example `typo3cms` without the binary) is reported as broken already.
 - `pf.your-changes`: from `upgrade-pilot contacts` (step 3): XCLASS, hooks and `template-override` entries of the core. For third-party packages, after `deps docs`: `upgrade-pilot deps touchpoints --verify --label preflight`. It finds, generically from each package's declarations (PSR-4 namespaces, extension key, tables, plugin signatures, templates, labels), where own extensions, sitepackages, `config/` and composer patches use or modify the package: XCLASSes, subclasses, service overrides, event listeners, hooks, TCA overrides, template copies and TypoScript template paths, language overrides, ViewHelper usage, persistence mapping, site configuration, patches. Verified against the target release, each entry is `ok`, `manual` or `attention` (changed signature, final class, removed event or class, changed original template, removed label key, changed patched file). Every `attention` entry is a QRH row, every `manual` one gets a look. List them all in `BRIEFING.md`.
 
 ## 2. The route ahead

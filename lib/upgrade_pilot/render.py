@@ -103,6 +103,13 @@ def flight_log(flight: Flight) -> str:
         lines += [f'| {name} | {d["from"] or "(new)"} | {d["to"]} | {d["summary"]} | {", ".join(d["wizards_new"]) or "-"} | {d["report"]} |'
                   for name, d in sorted(deps_log['docs'].items())]
         lines.append('')
+    if log.get('assessments'):
+        lines += ['### Assessments', '', '| At | Release status of third-party packages | Probe | Target advisories |', '|---|---|---|---|']
+        lines += [f'| {a["at"][:16]} | ' + ', '.join(f'{n} {k}' for k, n in sorted(a['counts'].items())) + f' | exit {a["probe"]} | '
+                  f'{a.get("advisories_target") if a.get("advisories_target") is not None else "-"} |' for a in log['assessments']]
+        lines.append('')
+    if log.get('blockers'):
+        lines += ['### Go-live blockers', ''] + [f'- {b["status"]} `{b["package"]}` uses {b["use"]}: {b["reason"]}' for b in log['blockers']] + ['']
     if log.get('touchpoints'):
         lines += ['### Modifications of third-party packages (touchpoints)', '',
                   '| Stage | Total | Needs attention | By hand | Verified | Commit |', '|---|---|---|---|---|---|']
@@ -196,6 +203,12 @@ def final_developer_report(flight: Flight) -> str:
         lines.append(f'### {key}: `{branch}` ({len(entries)} commits)')
         lines += [f'- {e}' for e in entries] or ['- none']
         lines.append('')
+    if log.get('blockers'):
+        lines += ['## Go-live blockers', '']
+        lines += [f'- {b["status"]} `{b["package"]}` uses {b["use"]}: {b["reason"]}'
+                  + (f' (waits for {b["waits_for"]})' if b.get('waits_for') else '') for b in log['blockers']]
+        open_count = sum(1 for b in log['blockers'] if b['status'] == 'open')
+        lines += ['', f'**Not releasable while {open_count} blocker(s) are open.**' if open_count else 'All resolved or dropped.', '']
     lines += ['## Gates', '']
     for phase, gate in log.get('gates', {}).items():
         lines.append(f'- {gate["gate"]} ({phase}): {gate["decision"].upper()} by {gate["by"]}. {gate["note"]}')

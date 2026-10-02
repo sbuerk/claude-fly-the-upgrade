@@ -165,7 +165,7 @@ Namespaces match case-insensitively, as PHP does.
 | `site-config` | YAML in `config/` naming the package's plugins, extension name, tables or `EXT:` paths | by hand |
 | `typoscript` | TypoScript and TSconfig referring to `tx_<key>` or `EXT:<key>/` | by hand |
 | `php-usage` | package classes used in own code | classes still exist |
-| `patch` | composer patches for the package | the patched files changed between both versions |
+| `patch` | composer patches for the package, read the way the installed plugin (cweagans 1.x or 2.x, vaimo) reads them | `git apply --check` against the target source: applies, fails, contained, retired, out of range ([process guide](PROCESS.md#4-pre-analysis-the-assessment)) |
 | `fixture` | package tables or plugin signatures in own CSV and XML fixtures | by hand |
 
 Each verified entry ends as **ok**, **manual** (a person has to look) or
@@ -176,19 +176,26 @@ target's source, so `deps docs` runs first.
 Touchpoints are part of the core scope as well: a core upgrade moves
 third-party packages too, and the same command covers them there.
 
+`--coverage` adds the test files that mention each touchpoint. A touchpoint no
+test mentions is surely untested. One that is mentioned still needs a look at
+the test, the `instruments` skill has a test pattern per kind.
+
 ## 6. Pre-flight
 
 In order, all without changing the packages:
 
 | Step | Command | Result |
 |---|---|---|
+| Pre-analysis | `assess` | release status of the packages against the installed core, security, patches, deployment, the size of the work, reports for developers and project managers ([process guide](PROCESS.md#4-pre-analysis-the-assessment)) |
+| Release decision | `blockers add`, or a hold | a development target the user keeps is a go-live blocker. If a release exists, the assessment says so |
 | Inventory | `init` output, `deps list` | what is in scope, what moves along, abandoned packages |
 | Compatibility | `versions` | target requirements for core and PHP, declared branch aliases |
 | Probe | `bump probe [--alias ...]` | does the update resolve, and with what |
 | Documentation | `deps docs` | one report per package in `.upgrade-pilot/deps/` |
 | Touchpoints | `deps touchpoints --verify --label preflight` | every affected place, with a verdict |
 | Work list | QRH | a row per breaking entry and per `attention` touchpoint |
-| Tests | `fly-the-upgrade:instruments` | tests that execute the touchpoints |
+| Tests | `fly-the-upgrade:instruments`, `deps touchpoints --coverage` | tests that execute the touchpoints |
+| Patches, deployment | `patches`, `delivery --label preflight` | patches that need work, scripts that break |
 | Baseline | `measure --label baseline` | the reference |
 
 The tests deserve attention. A project's suite rarely renders a third-party
@@ -221,7 +228,9 @@ summaries, run `report --phase all`, done.
 - `deps touchpoints --verify --label postflight` on the final state.
 - Deprecations the project still uses: the next update's work list.
 - Development stability and inline aliases: reverted once a release exists,
-  constraints pinned to it. Until then `handoff` with a date.
+  constraints pinned to it, then `blockers resolve`. Until then `handoff` with
+  a date, and the result is not releasable.
+- `delivery --label postflight`: deployment and CI against the updated instance.
 - Frontend, backend, logs and deprecation log as in a core upgrade.
 
 ## 9. Reports
@@ -229,7 +238,9 @@ summaries, run `report --phase all`, done.
 The same reports as a core upgrade (`report --phase ...`), titled with the
 packages and the versions. In addition:
 
+- the assessment reports (`reports/assessment-*`) before anything changed
 - a section on touchpoints: how many, how many need work, per run
+- go-live blockers, and "not releasable" while one is open
 - inline aliases as a temporary workaround under risks
 - in check mode, only pre-flight and final reports, saying that nothing
   was changed

@@ -37,6 +37,13 @@
               "how": "context list, read every reference, context add with a digest"
             },
             {
+              "id": "pf.assessment",
+              "owner": "shared",
+              "title": "Pre-analysis done before anything changes, its report read and discussed: release status, probe, advisories, size of the work",
+              "title_de": "Voranalyse vor jeder Änderung erstellt, Bericht gelesen und besprochen: Versionsstand, Auflösung, Sicherheitshinweise, Umfang",
+              "how": "assess, then notes/assessment-*.md and assess --render"
+            },
+            {
               "id": "pf.packages-inventory",
               "owner": "pilot",
               "title": "Packages in scope resolved: installed versions, direct or transitive, what requires them",
@@ -56,6 +63,20 @@
               "title": "The target supports the installed TYPO3 core and PHP version",
               "title_de": "Die Zielversion unterstützt den installierten TYPO3-Core und die PHP-Version",
               "how": "versions"
+            },
+            {
+              "id": "pf.release-status",
+              "owner": "shared",
+              "title": "Each package in scope has a released target version that supports the installed core, or a recorded decision: development version as go-live blocker, or hold",
+              "title_de": "Jedes Paket im Umfang hat eine veröffentlichte Zielversion für den installierten Core, oder eine festgehaltene Entscheidung: Entwicklungsstand als Go-Live-Blocker, oder warten",
+              "how": "assess, ask per package, blockers add or gate preflight nogo"
+            },
+            {
+              "id": "pf.security",
+              "owner": "shared",
+              "title": "Security advisories of the installed and of the target dependency graph known",
+              "title_de": "Sicherheitshinweise der installierten und der Ziel-Abhängigkeiten bekannt",
+              "how": "assess (composer audit of both lock files)"
             }
           ]
         },
@@ -89,6 +110,20 @@
               "title": "Where the project uses or modifies the packages is known: XCLASSes, subclasses, decorated services, listeners, hooks, TCA, TypoScript, template and language overrides, site configuration, patches",
               "title_de": "Bekannt, wo das Projekt die Pakete nutzt oder anpasst: XCLASSes, Unterklassen, dekorierte Services, Listener, Hooks, TCA, TypoScript, Template- und Sprach-Overrides, Site-Konfiguration, Patches",
               "how": "deps touchpoints (own extensions, sitepackages, config/, composer patches)"
+            },
+            {
+              "id": "pf.patches",
+              "owner": "pilot",
+              "title": "Composer patches checked against the target versions: apply, fail, already contained, out of range",
+              "title_de": "Composer-Patches gegen die Zielversionen geprüft: passt, scheitert, bereits enthalten, außerhalb des Versionsbereichs",
+              "how": "patches (cweagans or vaimo syntax, git apply --check on the target source)"
+            },
+            {
+              "id": "pf.delivery",
+              "owner": "shared",
+              "title": "Deployment and CI scripts checked: PHP versions, typo3cms binary, CLI commands, platform flags",
+              "title_de": "Deployment- und CI-Skripte geprüft: PHP-Versionen, typo3cms-Binary, CLI-Befehle, Plattform-Flags",
+              "how": "delivery --label preflight"
             },
             {
               "id": "pf.breaking-worklist",
@@ -282,6 +317,13 @@
               "title": "Errors separated: broken by the update, or broken already",
               "title_de": "Fehler getrennt: durch das Update verursacht oder schon vorher vorhanden",
               "how": "compare with the baseline"
+            },
+            {
+              "id": "fl.patches",
+              "owner": "pilot",
+              "title": "Patches applied on the new versions: failing ones rebased, contained ones removed",
+              "title_de": "Patches auf den neuen Versionen angewendet: scheiternde angepasst, enthaltene entfernt",
+              "how": "composer update output, patches --label flight"
             }
           ]
         },
@@ -358,6 +400,13 @@
               "how": "deps touchpoints --verify --label postflight"
             },
             {
+              "id": "pst.delivery",
+              "owner": "shared",
+              "title": "Deployment and CI scripts verified against the target instance: commands exist, PHP versions fit",
+              "title_de": "Deployment- und CI-Skripte gegen die Zielinstanz geprüft: Befehle vorhanden, PHP-Versionen passend",
+              "how": "delivery --label postflight"
+            },
+            {
               "id": "pst.packages-deprecations",
               "owner": "pilot",
               "title": "Deprecations of the packages the project still uses recorded for the next update",
@@ -389,6 +438,13 @@
               "title": "Constraints pinned to released versions once they exist",
               "title_de": "Abhängigkeiten auf veröffentlichte Versionen festgelegt, sobald es sie gibt",
               "how": "composer require through upgrade-pilot composer"
+            },
+            {
+              "id": "pst.blockers",
+              "owner": "shared",
+              "title": "Go-live blockers resolved (release in use and verified), or handed over with what they wait for",
+              "title_de": "Go-Live-Blocker aufgelöst (veröffentlichte Version im Einsatz und geprüft) oder mit dem, worauf sie warten, übergeben",
+              "how": "blockers check, blockers resolve, or handoff"
             }
           ]
         },

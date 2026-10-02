@@ -16,15 +16,16 @@ shows every option.
 1. [Overview](#1-overview)
 2. [Before you start](#2-before-you-start)
 3. [Initialization](#3-initialization)
-4. [Working rules: branches, commits, composer, issues](#4-working-rules-branches-commits-composer-issues)
-5. [Phase 1: Pre-flight](#5-phase-1-pre-flight)
-6. [Phase 2: Flight](#6-phase-2-flight)
-7. [Phase 3: Post-flight](#7-phase-3-post-flight)
-8. [The rule-by-rule loop](#8-the-rule-by-rule-loop)
-9. [Reports and summaries](#9-reports-and-summaries)
-10. [Manual investigations and corrections](#10-manual-investigations-and-corrections)
-11. [What ends up where](#11-what-ends-up-where)
-12. [Resuming, re-running, starting over](#12-resuming-re-running-starting-over)
+4. [Pre-analysis: the assessment](#4-pre-analysis-the-assessment)
+5. [Working rules: branches, commits, composer, issues](#5-working-rules-branches-commits-composer-issues)
+6. [Phase 1: Pre-flight](#6-phase-1-pre-flight)
+7. [Phase 2: Flight](#7-phase-2-flight)
+8. [Phase 3: Post-flight](#8-phase-3-post-flight)
+9. [The rule-by-rule loop](#9-the-rule-by-rule-loop)
+10. [Reports and summaries](#10-reports-and-summaries)
+11. [Manual investigations and corrections](#11-manual-investigations-and-corrections)
+12. [What ends up where](#12-what-ends-up-where)
+13. [Resuming, re-running, starting over](#13-resuming-re-running-starting-over)
 
 ---
 
@@ -38,8 +39,8 @@ shows every option.
 
 Three things run through all phases:
 
-- **The checklist** (the 68 lines of the talk, plus two about modifications
-  of third-party packages). Every line is answered: `done`,
+- **The checklist** (the 68 lines of the talk, plus ten about third-party
+  packages, security, patches, deployment and go-live blockers). Every line is answered: `done`,
   `no` (an accepted risk, with the reason), `na`, or `handoff` (a person has to
   do or confirm it). Open lines block the gate.
 - **The instruments.** Every claim is measured: test suites (`measure`),
@@ -141,7 +142,114 @@ upgrade-pilot context add PRJ-87 --title "Pre-analysis" --file digest.md
 
 ---
 
-## 4. Working rules: branches, commits, composer, issues
+## 4. Pre-analysis: the assessment
+
+Right after initialization, before any branch exists and before anything
+changes, the pilot writes a pre-analysis. It answers whether the upgrade can
+start, what has to be decided first, and how big the work is:
+
+```bash
+upgrade-pilot assess              # complete, a few minutes (reads dependency sources)
+upgrade-pilot assess --quick      # without dependency documentation and the core changelog
+upgrade-pilot assess --render     # render the reports again after writing the summaries
+```
+
+Every step is read-only. The composer probe changes `composer.json` and the
+lock file for a moment and restores them byte for byte.
+
+| Step | What it does |
+|---|---|
+| Versions | support dates, PHP range and the newest patch of the target core (`versions`) |
+| Release check | every third-party TYPO3 extension and every direct requirement, see below |
+| Security | `composer audit` of the installed lock file and of the target lock file the probe writes, plus abandoned packages |
+| Probe | `bump probe --audit`: does the target graph resolve |
+| Dependency documentation | `deps docs` for what moves, or per package at the version the release check found when the graph does not resolve as a whole |
+| Touchpoints | `deps touchpoints --verify --coverage`: where your code modifies the packages, and whether a test mentions each place |
+| Core changelog | `changelog fetch`, `changelog match` |
+| Patches | `patches`: every composer patch against the target version, see below |
+| Deployment and CI | `delivery`: CI and deployment files against the target, see below |
+
+**The release check.** The pilot only plans with released versions. For each
+package it asks Packagist (or, for packages from other repositories, composer
+itself with the project's credentials), the TYPO3 Extension Repository by
+extension key (its REST API), and the development branches:
+
+| Status | Meaning | What happens |
+|---|---|---|
+| `released` | a stable release supports the target | the flight raises the constraint, the report says if the current constraint does not allow it |
+| `released-ter` | only the TER has such a release | ask the maintainers, or install it differently |
+| `dev-only` | only a development line (`dev-main`, `v14.x-dev`, a branch alias) requires the target | **decision**: use it meanwhile as a go-live blocker, or hold |
+| `claimed` | no version requires the target, but the documentation of a development line mentions it (`ext_emconf.php` range, README, manual) | read the claim, it may point to a version elsewhere (an early access program, a fork), then decide |
+| `none` | nothing supports the target | **decision**: replace, drop, fork, or hold |
+| `independent` | no TYPO3 requirement | left to composer |
+
+Abandoned packages, the date of the latest release and the PHP requirement of
+the release are reported as well.
+
+**Decisions.** Claude asks you for every `dev-only`, `claimed` and `none`
+package:
+
+- **Use the development version meanwhile, as a go-live blocker.** The flight
+  continues with it and can land, but nothing is releasable until the blocker
+  is resolved:
+
+  ```bash
+  upgrade-pilot blockers add --package acme/shop --use dev-main \
+      --reason "no release supports TYPO3 14.3 yet" --waits-for "release 3.0.0"
+  upgrade-pilot blockers list
+  upgrade-pilot blockers check --package acme/shop
+  upgrade-pilot blockers resolve --package acme/shop --note "3.0.0 released and verified"
+  upgrade-pilot blockers drop --package acme/shop --note "replaced by acme/shop-ng"
+  ```
+
+  `resolve` refuses until every check passes: a stable version is installed,
+  it supports the target core, `composer.lock` with it is committed, every
+  configured test suite was measured green after that commit, and the
+  package's touchpoints were verified after it with nothing left that needs
+  attention. Open blockers appear in `status`, at every gate, in every report,
+  and the final status reads "not releasable".
+- **Hold the upgrade.** The pre-flight gate is closed with a No-Go and the
+  reason (`gate preflight nogo --note "..."`). Running `assess` again later
+  shows what changed.
+
+**Re-check.** Every assessment is kept in `.upgrade-pilot/assessments/`. Each
+new run compares itself with the previous one (or with `--since <file>`):
+packages whose status or version changed, new and resolved advisories, a
+probe that resolves now, and go-live blockers that can be resolved because a
+release has appeared.
+
+**Patches.** Both composer patch plugins are read with their own rules:
+
+| Plugin | Where patches are defined | Strip level | Version constraints |
+|---|---|---|---|
+| `cweagans/composer-patches` 1.x | root `extra.patches`, or `extra.patches-file` when `patches` is not set, dependencies when patching is enabled | `-p1`, `-p0`, `-p2`, `-p4` tried, `extra.patchLevel` forces one | none |
+| `cweagans/composer-patches` 2.x | root `extra.patches` (compact or expanded), `patches.json`, dependencies. `patches.lock.json` wins when it exists | one `depth` per patch, package or default | none |
+| `vaimo/composer-patches` | `extra.patches`, `patches-file`, `patches-search` directories with `@package`/`@version`/`@level` header tags, the same under `extra.patcher`, in the root and in dependencies (paths relative to the defining package) | `0`, `1`, `2` tried, `level` forces one | `version`, or `{"<constraint>": "file"}` |
+
+Each patch is checked with `git apply --check` against the package's source
+at the target version: `applies`, `fails` (rebase it), `contained` (the change
+is upstream, remove the patch), `retired` (its version constraint excludes the
+target and the change is upstream), `out of range` (excluded by its
+constraint, and the change would be lost).
+
+**Deployment and CI.** `delivery` reads CI configurations (GitHub, GitLab,
+Bitbucket, Jenkins and others), deployment recipes (Deployer, Surf,
+Magallanes), Dockerfiles, compose files, ddev and platform configuration and
+shell scripts. It reports PHP versions outside the target core's range, calls
+of `typo3cms` (gone with TYPO3 Console 8, checked against what is installed),
+`typo3` commands the instance does not know (`typo3 list` of the source in the
+pre-flight, of the target after the upgrade), and composer calls that switch
+platform checks off.
+
+The assessment reports are `reports/assessment-dev.en.md`,
+`reports/assessment-pm.en.md` and `reports/assessment-pm.de.md`, with
+summaries Claude writes into `notes/assessment-*.md`. The PM reports list the
+decisions, the go-live blockers, security and the size of the work in counted
+numbers, never in estimated hours.
+
+---
+
+## 5. Working rules: branches, commits, composer, issues
 
 **Branches.** Nothing lands on your base branch while the flight is open.
 The plugin's hook blocks merges, commits, rebases, resets and pushes onto
@@ -214,23 +322,25 @@ is pushed.
 
 ---
 
-## 5. Phase 1: Pre-flight
+## 6. Phase 1: Pre-flight
 
 Nothing here touches the target version. Everything committed runs on the
 current version and could be deployed before the upgrade.
 
 | # | Step | Commands | Produces | Look at by hand |
 |---|---|---|---|---|
+| pre | Pre-analysis | `assess`, then a decision per unreleased package: `blockers add` or `gate preflight nogo` (hold) | `reports/assessment-*`, `assessments/<time>.json` | decisions, the PM report before you send it |
 | 0 | Branch | `git switch -c <prefix>/preflight-<source>` | | |
 | 1 | Context | `context list`, `context add` | `context/*.md` | contradictions between context and tools |
 | 2 | Aircraft | `composer outdated "typo3/cms-*" --direct --patch-only`, `versions` | platform facts | owners of own extensions |
 | 3 | Bump probe | `bump probe` | probe log (`composer require --no-update` + `update -W --dry-run`, files restored) | every "Problem N" |
 | 4 | Dependencies | `deps list`, `deps docs` | `deps/<package>-<from>-<to>.md` per package | breaking entries, new wizards, "nothing documented" |
+| 4b | Modifications, patches, deployment | `deps touchpoints --verify --coverage`, `patches`, `delivery --label preflight` | `touchpoints.json`, `patches.json`, `delivery.json` | `attention` entries, untested touchpoints, failing patches, broken scripts |
 | 5 | Core changelog | `changelog fetch`, `changelog match` | `changelog-<from>-<to>.json` | every strong entry's rst |
 | 6 | Instruments | `contacts`, write tests, `commit --step instruments` | tests, `contacts.json` | untested contact points, dead code |
 | 7 | Baseline | `measure --label baseline` | the reference for the whole flight | unexplained failures |
 | 8 | Scan + TCA | `scan --label preflight`, `tca --label preflight` | counts and messages | strong findings |
-| 9 | Rector/Fractor, current rules | `rules config --tool rector --level <source>`, then the [loop](#8-the-rule-by-rule-loop), same for Fractor | one commit per rule | every diff, generated code |
+| 9 | Rector/Fractor, current rules | `rules config --tool rector --level <source>`, then the [loop](#9-the-rule-by-rule-loop), same for Fractor | one commit per rule | every diff, generated code |
 | 10 | Hand fixes | code changes, `measure`, `commit --step preflight-hand-fixes` | one commit per topic | replacement must exist on the source **and** the target |
 | 11 | Schema tooling | `schema check` (and `schema plan` with TYPO3 Console) | tooling decision | whether to add TYPO3 Console (your decision) |
 | 12 | Crew | write `QRH.md`, `MEL.md`, `BRIEFING.md`, `snapshot take/restore` | the flight plan | rollback criteria, window, people |
@@ -243,7 +353,7 @@ MEL.
 
 ---
 
-## 6. Phase 2: Flight
+## 7. Phase 2: Flight
 
 | # | Step | Commands | Produces | Look at by hand |
 |---|---|---|---|---|
@@ -251,8 +361,10 @@ MEL.
 | 1 | Branch | `git switch -c <prefix>/<target>` | | |
 | 2 | Platform | `versions` | PHP check | PHP must already be right |
 | 3 | Packages | `bump apply`, `composer update -W`, `deps list --from-lock <preflight branch>`, `deps docs`, `commit --step bump` | the bump commit with all commands | "Problem 1" when composer refuses |
+| 3a | Go-live blockers | in the same transaction, for each blocker: `composer config minimum-stability dev`, `composer config prefer-stable true`, `composer require --no-update '<package>:<branch>'` (all through `upgrade-pilot composer`) | the development versions, recorded in the bump commit | that every one has a blocker |
 | 3b | Measure | `measure --label "after bump"` | the real worklist | |
-| 4 | Rector | `rules config --tool rector --level <target>`, [loop](#8-the-rule-by-rule-loop), optional PHP set: `rules config --tool rector --set php` and a `*-rector-php` campaign | one commit per rule | generated wizards, data consequences |
+| 3c | Patches and modifications | `patches --label flight`, `deps touchpoints --verify --label flight` | rebased or removed patches, adapted code | contained patches are removed, failing ones rebased |
+| 4 | Rector | `rules config --tool rector --level <target>`, [loop](#9-the-rule-by-rule-loop), optional PHP set: `rules config --tool rector --set php` and a `*-rector-php` campaign | one commit per rule | generated wizards, data consequences |
 | 5 | Fractor | same with `--tool fractor` | one commit per rule | re-indented TypoScript |
 | 6 | Scan | `scan --label flight`, `tca --label flight` | new findings of the target rules | |
 | 7 | Failures | fix, `measure --label "<fix>"`, `commit --step <slug>` | one commit per fix | broken by the upgrade or broken already |
@@ -268,14 +380,16 @@ tests. `schema apply` repeats plan and apply until the dry run is empty
 
 ---
 
-## 7. Phase 3: Post-flight
+## 8. Phase 3: Post-flight
 
 | # | Step | Commands | Produces | Look at by hand |
 |---|---|---|---|---|
 | 1 | Landing | frontend requests, scheduler check | | frontend, backend, logs (your team) |
 | 2 | Sweep | `scan --label postflight`, `tca --label postflight`, local deprecation-log crawl | the next upgrade's work list | instance configuration (settings.php) |
+| 2b | Deployment and CI | `delivery --label postflight`: commands checked against the target instance | `delivery.json` | scripts and CI images to change |
 | 3 | Destructive schema | `schema plan --destructive` | drops and renames for the MEL | the date after the rollback window |
 | 4 | Ferry equipment | grep for shims and TODOs, `composer remove` of what only the upgrade needed | commits | whether tooling stays for CI |
+| 4b | Go-live blockers | `blockers check`, and once a release exists: require it, measure, verify touchpoints, `blockers resolve`. Otherwise `handoff` with what it waits for | resolved blockers, or a result marked not releasable | the release date the team waits for |
 | 5 | Record | `versions --target <next>`, `DEBRIEF.md` | next flight date, debrief | |
 | 6 | Issues | `issues list`, then `issues apply` once numbers are filled in | final history | before anything is pushed |
 | 7 | Gate | `gate postflight show`, decision | phase `landed`, guard released | |
@@ -283,7 +397,7 @@ tests. `schema apply` repeats plan and apply until the dry run is empty
 
 ---
 
-## 8. The rule-by-rule loop
+## 9. The rule-by-rule loop
 
 Every Rector and Fractor campaign, in every phase:
 
@@ -308,7 +422,7 @@ upgrade-pilot rules plan                       # rules interact: plan again
 
 ---
 
-## 9. Reports and summaries
+## 10. Reports and summaries
 
 At every gate and at the end:
 
@@ -322,6 +436,7 @@ upgrade-pilot report --phase preflight      # or flight, postflight, final, all
 | `reports/<phase>-pm.en.md` | project managers, customers | English | status, what was done, results in plain numbers, accepted risks, what your team has to do, next steps |
 | `reports/<phase>-pm.de.md` | project managers, customers | German | the same in German, checklist titles in German |
 | `reports/final-*` | all | as above | the whole flight, timeline, next upgrade date |
+| `reports/assessment-*` | developers, project managers | as above | the pre-analysis: release status, decisions, go-live blockers, security, size of the work |
 | `UPGRADE-REPORT.md` | developers | English | the complete technical record with the debrief |
 
 Facts come from the flight log. The prose summaries are written by Claude into
@@ -332,7 +447,7 @@ before you forward them.
 
 ---
 
-## 10. Manual investigations and corrections
+## 11. Manual investigations and corrections
 
 | Situation | What to do |
 |---|---|
@@ -347,6 +462,12 @@ before you forward them.
 | A hand fix uses API removed in the target | check replacements against the target's changelog too (`changelog match`) |
 | Tests red after the bump | one at a time. Removed API: fix now. Deprecation: fix or MEL. Compare with the baseline: broken by the upgrade or broken already |
 | A dependency has "nothing documented" | read the maintainer's project page, releases or issues by hand |
+| A package has no release for the target | decide: development version as go-live blocker, replace, drop, fork, or hold. Never ship a development version silently |
+| A package is `claimed` | read the claim in the assessment report: a supported branch, a planned version, or a version that is not public (early access, paid) |
+| A patch `fails` on the target | rebase it on the target source, or drop it if the fix landed upstream differently |
+| A patch is `contained` or `retired` | remove it in the flight, the change is upstream |
+| A deployment script calls `typo3cms` | replace it with `typo3` in the same change that raises TYPO3 Console |
+| `blockers resolve` refuses | read `blockers check`: every check names what is missing |
 | Schema does not converge | stop. Charset/collation drift, conflicting definitions. It would fail on every environment the same way |
 | A wizard is missing from the list | `cache:flush`, the container was built before the class existed |
 | The local database has no rows for a wizard | rehearse with a row inserted the way the old version stored it, on the local database only |
@@ -356,18 +477,23 @@ before you forward them.
 
 ---
 
-## 11. What ends up where
+## 12. What ends up where
 
 ```text
 .upgrade-pilot/                    excluded from git
 ├── config.json                    runtime, tests, extensions, branches, commit policy, facts
-├── flightlog.json                 checklist, gates, measurements, scans, campaigns, commits, issues, context
+├── flightlog.json                 checklist, gates, measurements, scans, campaigns, commits, issues, context, assessments, blockers
 ├── FLIGHT-LOG.md                  rendered view of the flight log
 ├── QRH.md  MEL.md  BRIEFING.md    written during the pre-flight
 ├── DEBRIEF.md                     written after landing
 ├── ISSUES.md                      per-step issues or placeholders with their commits
 ├── context/                       digests of pre-collected information
+├── assessments/                   every pre-analysis (JSON), compared with the previous one
+├── assess/                        composer audit results, the probed target lock file
 ├── deps/                          one report per dependency that moves
+├── touchpoints.json               where own code modifies third-party packages, verified
+├── patches.json                   composer patches and their state on the target
+├── delivery.json                  deployment and CI findings
 ├── changelog-<from>-<to>.json     core changelog entries matched against your code
 ├── contacts.json                  core contact points and their test coverage
 ├── notes/                         summaries written for the reports
@@ -385,7 +511,7 @@ commits.
 
 ---
 
-## 12. Resuming, re-running, starting over
+## 13. Resuming, re-running, starting over
 
 - Resume any time: `/fly-the-upgrade:upgrade` or `upgrade-pilot status -v`.
 - Any measurement, scan or report can be re-run, every run is recorded with

@@ -16,6 +16,7 @@ Green again is the end of the flight, not of the work. Everything found here is 
 
 ## Sweep again, with the new rules
 
+- `pst.delivery`: `upgrade-pilot delivery --label postflight`. The command check now runs against the target instance, so a command that was removed or renamed in the target shows up. Propose the script and CI changes, `handoff` for what the team changes outside the repository.
 - `pst.touchpoints`: `upgrade-pilot deps touchpoints --verify --label postflight` on the final state. Nothing may be left in `attention`, and `manual` entries carry a note.
 - `upgrade-pilot scan --label postflight`: the scanner now warns about the version after this one. Every remaining finding is either fixed now or goes into the "next flight" list in the report.
 - `upgrade-pilot tca --label postflight`: the migration list changes with the core, a new message here is a new deprecation.
@@ -30,6 +31,7 @@ Green again is the end of the flight, not of the work. Everything found here is 
 - `pst.schema-destructive`: with TYPO3 Console, `upgrade-pilot schema plan --destructive --label postflight` lists what the target no longer needs (fields and tables to rename or drop). Without it, the same list is in Admin Tools > Maintenance > Analyze Database Structure (`handoff`). Put every entry on the MEL with a date after the rollback window. Running them is a human decision (`schema apply --types destructive --allow-destructive`), never part of this flight.
 - `pst.shims`, `pst.markers`: grep the diff of both branches for compatibility shims and TODO markers added during the flight (`git diff <base>...HEAD`). Remove what is resolved, one commit.
 - `pst.upgrade-packages`: rector, fractor, the scanner CLI and similar exist for the upgrade. Propose to the user: keep in `require-dev` (and in CI) or move to an isolated tools install. Record the decision, do not decide alone.
+- `pst.blockers`: `upgrade-pilot assess --quick` shows whether a release appeared for a blocker. If one did: require it (recorded composer commands), commit, measure every suite, `deps touchpoints --verify --package <package>`, then `upgrade-pilot blockers resolve --package <package>`. If not: answer `pst.blockers` with `handoff` and the release it waits for. The landed flight is then not releasable, say so to the user and in the summaries.
 - `pst.constraints`: own extensions' `composer.json` and `ext_emconf.php` point at the target only, unless the extension deliberately supports both.
 - `pst.ci`: CI must run on the target version. Propose the change, and raise scanner/Rector checks to the next target.
 

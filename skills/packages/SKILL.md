@@ -50,6 +50,8 @@ The checklist of this scope is `data/checklist-packages.json`. `upgrade-pilot st
 
 Work the items in order. Everything except instrument tests stays unchanged in the project.
 
+0. **Pre-analysis** (`pf.assessment`, `pf.release-status`, `pf.security`): `fly-the-upgrade:assess`. In this scope it checks the packages of the flight against the installed core: is there a released version, or only a development line. A development target chosen at init is a decision as well: if a release exists, offer it instead. If the user keeps the development target, record it as a go-live blocker (`upgrade-pilot blockers add`).
+
 1. **Inventory** (`pf.packages-inventory`, `pf.packages-support`): what init resolved, which of them are direct requirements and which come along. `upgrade-pilot deps list` after the probe shows abandoned packages. Maintainer contacts are a human answer.
 2. **Compatibility** (`pf.packages-compatibility`): `upgrade-pilot versions`. It checks the target's `typo3/cms-core` and `php` requirements against what is installed, and reads declared branch aliases. A **WARNING about a branch alias** means the alias is declared for another version name than the one composer uses, so composer ignores it and constraints of other packages on the aliased version will fail. That is a packaging issue of the package, report it to its maintainers.
 3. **Probe** (`pf.packages-probe`): `upgrade-pilot bump probe`. It runs the recorded composer commands and `composer update <packages> -W --dry-run`, then restores the files. If it does not resolve, read every "Problem N". When a package of the flight does not satisfy a constraint of another one, the CLI says why and what helps:
@@ -61,10 +63,11 @@ Work the items in order. Everything except instrument tests stays unchanged in t
    - the rendered manual on docs.typo3.org, as Markdown where published (`--no-rendered` to skip). Pages of the target manual that are new against the installed version's manual, upgrade and migration guides first. Changelog pages are skipped when the repository's changelog was read already, they are the same entries.
    - new upgrade wizards, and whether one is **opt-in** (excluded from the service container by the package, so the core never offers it). The class documentation is in the report.
    Read every report in `.upgrade-pilot/deps/` completely. A breaking change on a minor or a development branch is still a breaking change.
-6. **Touchpoints** (`pf.packages-touchpoints`): `upgrade-pilot deps touchpoints --verify --label preflight`. It scans own extensions, sitepackages, local path packages, `config/` and the root `composer.json` (patches) for every place that uses or modifies the packages, and verifies each against the target: signatures of overridden methods (also for XCLASS replacement classes), final classes, removed classes and events, changed originals of copied templates, removed label keys, missing ViewHelpers, changed patched files. Each entry ends as `ok`, `manual` or `attention`. The details are in `.upgrade-pilot/touchpoints.json`.
+6. **Touchpoints** (`pf.packages-touchpoints`): `upgrade-pilot deps touchpoints --verify --label preflight`. It scans own extensions, sitepackages, local path packages, `config/` and the root `composer.json` (patches) for every place that uses or modifies the packages, and verifies each against the target: signatures of overridden methods (also for XCLASS replacement classes), final classes, removed classes and events, changed originals of copied templates, removed label keys, missing ViewHelpers, patches that no longer apply. Each entry ends as `ok`, `manual` or `attention`. The details are in `.upgrade-pilot/touchpoints.json`.
 7. **Work list** (`pf.breaking-worklist`): every breaking entry that touches the project and every `attention` touchpoint becomes a `QRH.md` row: what breaks, where, the migration text of the package, what you will do.
 8. **Tests** (`pf.packages-tests`): the existing suite rarely executes third-party code. With `fly-the-upgrade:instruments`, add tests that render the package's plugins with the project's configuration, run own listeners and overrides, and read records through the package's repositories. Only these tests turn a touchpoint into a measurement. Commit them on the pre-flight branch (`upgrade-pilot commit --step instruments`).
-9. **Baseline, QRH, MEL, briefing, schema tooling, backup** as in `fly-the-upgrade:preflight`.
+9. **Patches and deployment** (`pf.patches`, `pf.delivery`): `upgrade-pilot patches` and `upgrade-pilot delivery --label preflight`, as in `fly-the-upgrade:preflight`.
+10. **Baseline, QRH, MEL, briefing, schema tooling, backup** as in `fly-the-upgrade:preflight`.
 
 Gate `preflight`. In **check** mode the GO lands the flight: write the notes and run `upgrade-pilot report --phase all` (preflight and final). The final reports say that nothing was changed. Stop there.
 
@@ -87,6 +90,7 @@ The sequence, one item each, in this order:
 ## Post-flight (update mode)
 
 - `pst.touchpoints`: `deps touchpoints --verify --label postflight` on the final state.
+- `pst.blockers`, `pst.delivery`: as in `fly-the-upgrade:postflight`. A development target stays a go-live blocker until its release is used and verified.
 - `pst.packages-deprecations`: the Deprecation entries of the deps reports that the project still uses are the next update's work list.
 - `pst.packages-stability`, `pst.constraints`: once a release exists, pin it (`upgrade-pilot composer require --no-update <name>:^<version>`) and revert the stability settings and aliases. Until then both stay on the MEL as `handoff` with a date.
 - Frontend, backend, logs, deprecation log, docs and debrief as in `fly-the-upgrade:postflight`.

@@ -161,7 +161,8 @@ class TouchpointsTest(unittest.TestCase):
             '<html xmlns:shop="http://typo3.org/ns/Acme/Shop/ViewHelpers"><shop:price value="1"/></html>\n')
         (root / 'config' / 'sites' / 'main').mkdir(parents=True)
         (root / 'config' / 'sites' / 'main' / 'config.yaml').write_text('routeEnhancers:\n  Shop:\n    type: Extbase\n    extension: Shop\n    plugin: List\n')
-        (root / 'composer.json').write_text(json.dumps({'extra': {'patches': {'acme/shop': {'Fix cart': 'patches/shop-cart.patch'}}}}))
+        (root / 'composer.json').write_text(json.dumps({'require': {'cweagans/composer-patches': '^1.7'},
+                                                       'extra': {'patches': {'acme/shop': {'Fix cart': 'patches/shop-cart.patch'}}}}))
         self.lock = {'acme/shop': {'version': '1.2.0', 'type': 'typo3-cms-extension',
                                    'autoload': {'psr-4': {'Acme\\Shop\\': 'Classes/'}},
                                    'extra': {'typo3/cms': {'extension-key': 'shop'}}}}

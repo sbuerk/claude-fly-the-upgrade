@@ -12,7 +12,7 @@ three gated phases (pre-flight, flight, post-flight). It consists of:
 | Part | Where | Role |
 |---|---|---|
 | Manifest and marketplace | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | The repository is its own single-plugin marketplace (`source: "./"`) |
-| Skills | `skills/<name>/SKILL.md` | The procedures Claude follows: `upgrade`, `preflight`, `instruments`, `rule-by-rule`, `flight`, `postflight`, `packages` |
+| Skills | `skills/<name>/SKILL.md` | The procedures Claude follows: `upgrade`, `assess`, `preflight`, `instruments`, `rule-by-rule`, `flight`, `postflight`, `packages` |
 | Agent | `agents/rule-reviewer.md` | Read-only review of one refactoring rule's diff |
 | Hook | `hooks/hooks.json`, `hooks/guard_base_branch.py` | PreToolUse guard: nothing lands on the base branch while a flight is open |
 | CLI | `bin/upgrade-pilot`, `lib/upgrade_pilot/*.py` | Tracking and tooling the skills drive. `bin/` is on `PATH` while the plugin is enabled |
@@ -26,7 +26,11 @@ CLI modules: `core` (state, runtime wrapper, git), `init` (detection),
 bump, snapshots), `schema` (schema tooling detection, dry run, converging apply),
 `deps` (third-party packages that move, their notes by convention, new and opt-in wizards),
 `docsite` (rendered manuals on docs.typo3.org, read as `llms.txt` asks),
-`touchpoints` (where own code and configuration use or modify third-party packages, verified against the target),
+`touchpoints` (where own code and configuration use or modify third-party packages, verified against the target, test coverage),
+`catalog` (release status of a package for a core version: Packagist, composer, TER, development branches and their documentation),
+`assess` (the pre-analysis: read-only steps, sizing, comparison, reports), `blockers` (go-live blockers and their resolution checks),
+`patches` (cweagans 1.x/2.x and vaimo patch definitions, `git apply --check` against the target source),
+`delivery` (deployment and CI files against the target),
 `commit` (message rendering, recorded commands, composer fold, issues), `gitops`
 (plumbing history rewrites), `context` (pre-collected information), `reports`
 (developer and PM reports, en and de),

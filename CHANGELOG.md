@@ -6,6 +6,47 @@ All notable changes to this plugin. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Pre-analysis: `upgrade-pilot assess` and the skill `assess` run read-only
+  steps before anything changes and write a report for developers (en) and
+  project managers (en, de): release status of every third-party package for
+  the target (`released`, `released-ter`, `dev-only`, `claimed`, `none`) from
+  Packagist, composer, the TER REST API and the development branches with
+  their documentation, the composer probe, security advisories, patches,
+  deployment and CI, touchpoints with test coverage, and counted sizing
+  indicators. Every assessment is kept and compared with the previous one
+  (`--since`), including go-live blockers that can be resolved now.
+- Go-live blockers: `blockers list|add|check|resolve|drop`. A development
+  version used meanwhile is recorded as a blocker, shown in status, gates and
+  reports ("not releasable"), and only resolved when a released version is
+  installed and committed, every suite was green afterwards and the
+  package's touchpoints were verified on it.
+- `patches`: composer patches read the way `cweagans/composer-patches` 1.x,
+  2.x (including `patches.lock.json`) and `vaimo/composer-patches` (including
+  `patches-search` headers and version constraints) read them, checked with
+  `git apply --check` against the target source: applies, fails, contained,
+  retired, out of range. Patch touchpoints use it.
+- `delivery`: CI and deployment files checked for PHP versions outside the
+  target range, `typo3cms` calls, `typo3` commands the instance does not
+  know, and switched-off platform checks.
+- `bump probe --audit`: writes the target lock without installing it, runs
+  `composer audit` on it and restores the lock file.
+- `deps touchpoints --coverage`: the test files that mention each touchpoint.
+  The `instruments` skill has a test pattern per touchpoint kind.
+- Checklist lines `pf.assessment`, `pf.release-status`, `pf.security`,
+  `pf.patches`, `pf.delivery`, `fl.patches`, `pst.delivery`, `pst.blockers`
+  in both scopes, and a process guide section on the pre-analysis.
+
+### Fixed
+
+- `bump probe` no longer fails in the core scope when the target graph does
+  not resolve (the branch alias hint of 0.4.0 assumed a packages flight).
+- `deps touchpoints --verify` no longer fails before `deps docs` ran.
+- `bump probe` and a failing `bump apply` restore the composer files they
+  touched byte for byte instead of through `git checkout`, which discarded
+  uncommitted changes in those files.
+
 ## [0.4.0] - 2026-09-30
 
 ### Added

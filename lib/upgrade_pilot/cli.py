@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import argparse
 
-from . import changelog, checklist, commit, contacts, context, deps, init, instruments, platform, reports, rules, schema, touchpoints
+from . import (assess, blockers, changelog, checklist, commit, contacts, context, delivery, deps, init, instruments, patches, platform,
+               reports, rules, schema, touchpoints)
 
 
 def build() -> argparse.ArgumentParser:
@@ -99,6 +100,8 @@ def build() -> argparse.ArgumentParser:
 
     p = sub.add_parser('bump', help='raise core constraints: show, probe (dry-run resolve, then restore) or apply')
     p.add_argument('mode', choices=['show', 'probe', 'apply'])
+    p.add_argument('--audit', action='store_true',
+                   help='probe: write the target lock without installing, run composer audit on it, restore composer.lock')
     p.add_argument('--alias', action='append', metavar='NAME=VERSION',
                    help='packages scope: require NAME as "<target> as VERSION" in the root composer.json (inline alias, remembered for apply)')
     p.set_defaults(func=platform.cmd_bump)
@@ -118,6 +121,7 @@ def build() -> argparse.ArgumentParser:
     c = dsub.add_parser('touchpoints', help='where own extensions, sitepackages and config modify or use third-party packages')
     c.add_argument('--package', action='append', help='package (repeatable, default: the scope or the moving TYPO3 extensions)')
     c.add_argument('--verify', action='store_true', help='check every touchpoint against the target release (needs deps docs first)')
+    c.add_argument('--coverage', action='store_true', help='show which test files mention each touchpoint')
     c.add_argument('--label', default='touchpoints')
     c.set_defaults(func=touchpoints.cmd_touchpoints)
 
@@ -240,6 +244,32 @@ def build() -> argparse.ArgumentParser:
     p = sub.add_parser('report', help='reports for a phase or the whole flight: developer (en), pm/customer (en, de)')
     p.add_argument('--phase', choices=['preflight', 'flight', 'postflight', 'final', 'all'], default='final')
     p.set_defaults(func=reports.cmd_report)
+
+    p = sub.add_parser('assess', help='pre-analysis before anything changes: release status of third-party packages, probe, '
+                                      'security advisories, sizing, patches, deployment, report (developer en, pm en and de)')
+    p.add_argument('--quick', action='store_true', help='skip the slow reads: dependency documentation and the core changelog')
+    p.add_argument('--since', help='compare with this earlier assessment (file name in .upgrade-pilot/assessments/), default the previous one')
+    p.add_argument('--render', action='store_true', help='only render the reports of the latest assessment again (after writing the notes)')
+    p.set_defaults(func=assess.cmd_assess)
+
+    p = sub.add_parser('blockers', help='go-live blockers: things the flight may land with, but that must not go live')
+    p.add_argument('action', choices=['list', 'add', 'check', 'resolve', 'drop'])
+    p.add_argument('--package', help='the package the blocker is about')
+    p.add_argument('--use', help='add: the branch or development version used meanwhile, e.g. dev-main')
+    p.add_argument('--reason', help='add: why, in one sentence')
+    p.add_argument('--waits-for', help='add: what ends it, e.g. "release 3.0.0"')
+    p.add_argument('--note', help='resolve, drop: what happened')
+    p.set_defaults(func=blockers.cmd_blockers)
+
+    p = sub.add_parser('patches', help='composer patches (cweagans or vaimo) and whether they apply to the target versions')
+    p.add_argument('--package', action='append', help='only patches for this package (repeatable)')
+    p.add_argument('--label', default='patches')
+    p.set_defaults(func=patches.cmd_patches)
+
+    p = sub.add_parser('delivery', help='deployment and CI files: PHP versions, typo3cms, typo3 commands, platform flags')
+    p.add_argument('--label', default='delivery')
+    p.add_argument('--verbose', action='store_true', help='also list what is fine')
+    p.set_defaults(func=delivery.cmd_delivery)
     return parser
 
 

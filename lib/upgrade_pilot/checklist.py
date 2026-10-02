@@ -78,6 +78,11 @@ def cmd_gate(args) -> None:
         handoff = [i for _, i in items_of(phase, flight.config) if flight.log['checklist'][i['id']]['status'] == 'handoff']
         if handoff:
             print(f'  waiting for a human: {", ".join(i["id"] for i in handoff)}')
+        live = [b for b in flight.log.get('blockers', []) if b['status'] == 'open']
+        if live:
+            print(f'  open go-live blockers: {len(live)} (they do not stop this gate, they make the result not releasable)')
+            for b in live:
+                print(f'    {b["package"]} uses {b["use"]}: {b["reason"]}')
         return
     if not args.note:
         die('a gate decision needs --note: the reason, in one or two sentences')
@@ -88,10 +93,11 @@ def cmd_gate(args) -> None:
             print(f'  {item_id:<28} ({item["owner"]}) {item["title"]}')
         die('answer them (done / no / na / handoff) or pass --force with a note explaining why.')
     by = args.by or ('pilot' if flight.config.get('gates') == 'auto' else 'human')
+    live = [b['package'] for b in flight.log.get('blockers', []) if b['status'] == 'open']
     flight.log['gates'][phase] = {
         'gate': gate['title'], 'decision': args.decision, 'by': by, 'note': args.note,
         'forced_over': [i for i, _ in open_items] if args.force else [], 'at': now(),
-        'branch': git_branch(flight.root),
+        'branch': git_branch(flight.root), 'open_blockers': live,
     }
     if args.decision == 'go':
         check_only = flight.config.get('mode') == 'check' and phase == 'preflight'
@@ -99,6 +105,8 @@ def cmd_gate(args) -> None:
     flight.event(f'Gate {gate["title"]}: {args.decision.upper()} by {by}. {args.note}')
     flight.save()
     print(f'Gate "{gate["title"]}": {args.decision.upper()} ({by}). Phase is now {flight.log["phase"]}.')
+    if live and flight.log['phase'] == 'landed':
+        print(f'NOT RELEASABLE: {len(live)} open go-live blocker(s): {", ".join(live)}. upgrade-pilot blockers check --package <name>')
 
 
 def cmd_phase(args) -> None:
@@ -131,6 +139,9 @@ def cmd_status(args) -> None:
                 print(f'  {item_id:<28} {item["owner"]:<7} {item["title"]}')
                 if args.verbose:
                     print(f'  {"":<28} how: {item["how"]}')
+    live = [b for b in log.get('blockers', []) if b['status'] == 'open']
+    if live:
+        print(f'\ngo-live blockers (open): ' + ', '.join(f'{b["package"]} ({b["use"]})' for b in live))
     unread = [c['ref'] for c in log.get('context', []) if not c.get('digest')]
     if unread:
         print(f'\ncontext not read yet: {", ".join(unread)} (upgrade-pilot context list)')

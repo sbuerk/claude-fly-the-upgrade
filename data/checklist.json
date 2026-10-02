@@ -14,6 +14,7 @@
         "title": "Go / No-Go",
         "go": [
           "Strong scanner matches at zero, or on the MEL with a date",
+          "Every third-party package on a released version for the target, or a go-live blocker recorded for it",
           "Every third-party extension resolved (bump probe resolves)",
           "A backup restored successfully at least once",
           "Rollback criteria written and understood",
@@ -21,6 +22,7 @@
         ],
         "nogo": [
           "\"We will find out during the upgrade\"",
+          "A package without a release for the target, and nobody decided what to do about it",
           "An unowned extension nobody can update",
           "A backup that has never been restored",
           "A window that fits only the happy path",
@@ -32,9 +34,12 @@
           "title": "The aircraft you have",
           "items": [
             {"id": "pf.context", "owner": "pilot", "title": "Pre-collected context (issues, documents, notes) read, digested and reflected in QRH and briefing", "title_de": "Vorab gesammelte Informationen (Tickets, Dokumente, Notizen) gelesen und in QRH und Briefing berücksichtigt", "how": "context list, read every reference, context add with a digest"},
+            {"id": "pf.assessment", "owner": "shared", "title": "Pre-analysis done before anything changes, its report read and discussed: release status, probe, advisories, size of the work", "title_de": "Voranalyse vor jeder Änderung erstellt, Bericht gelesen und besprochen: Versionsstand, Auflösung, Sicherheitshinweise, Umfang", "how": "assess, then notes/assessment-*.md and assess --render"},
             {"id": "pf.current-version", "owner": "pilot", "title": "Current version known, on its latest patch, documented", "title_de": "Aktuelle Version bekannt, auf dem neuesten Patch-Stand, dokumentiert", "how": "init records the installed core, composer outdated --patch-only shows missing patches"},
             {"id": "pf.own-extensions", "owner": "shared", "title": "Own extensions inventoried, each with a named owner", "title_de": "Eigene Extensions erfasst, jede mit einer verantwortlichen Person", "how": "init lists own extensions, a human names owners"},
             {"id": "pf.third-party", "owner": "pilot", "title": "Third-party extensions: a target-version release exists, or a plan does", "title_de": "Fremd-Extensions: Es gibt eine Version für die Zielversion oder einen Plan", "how": "bump probe resolves the target graph without writing anything"},
+            {"id": "pf.release-status", "owner": "shared", "title": "Every third-party package has a released version for the target, or a recorded decision: development version as go-live blocker, or hold", "title_de": "Jedes Fremdpaket hat eine veröffentlichte Version für die Zielversion, oder eine festgehaltene Entscheidung: Entwicklungsstand als Go-Live-Blocker, oder warten", "how": "assess, ask per package, blockers add or gate preflight nogo"},
+            {"id": "pf.security", "owner": "shared", "title": "Security advisories of the installed and of the target dependency graph known", "title_de": "Sicherheitshinweise der installierten und der Ziel-Abhängigkeiten bekannt", "how": "assess (composer audit of both lock files)"},
             {"id": "pf.unowned", "owner": "human", "title": "Unowned extensions forked, replaced or dropped, decided now", "title_de": "Verwaiste Extensions: geforkt, ersetzt oder entfernt, jetzt entschieden", "how": "ask"},
             {"id": "pf.your-changes", "owner": "shared", "title": "Your changes to others listed: Fluid overrides, FlexForm extensions, XCLASSes, hooks", "title_de": "Eigene Anpassungen an Fremdcode erfasst: Fluid-Overrides, FlexForm-Erweiterungen, XCLASSes, Hooks", "how": "deps touchpoints: XCLASSes, subclasses, decorated services, listeners, hooks, TCA, TypoScript, template and language overrides, patches of third-party extensions in own extensions and sitepackages"},
             {"id": "pf.platform", "owner": "pilot", "title": "Platform recorded: PHP, database, web server, image processing", "title_de": "Plattform erfasst: PHP, Datenbank, Webserver, Bildverarbeitung", "how": "init records runtime PHP and database"}
@@ -47,6 +52,8 @@
             {"id": "pf.changelogs", "owner": "shared", "title": "Changelogs read and triaged: Breaking, Deprecation, Feature, Important", "title_de": "Changelogs gelesen und eingeordnet: Breaking, Deprecation, Feature, Important", "how": "changelog fetch + changelog match"},
             {"id": "pf.breaking-worklist", "owner": "pilot", "title": "Breaking changes that touch your code extracted into a work list", "title_de": "Breaking Changes, die den eigenen Code betreffen, als Arbeitsliste erfasst", "how": "changelog match output goes into QRH.md"},
             {"id": "pf.dependency-docs", "owner": "pilot", "title": "Changelogs, upgrade guides and release notes of every third-party package that moves read, breaking entries and new upgrade wizards in the QRH", "title_de": "Changelogs, Upgrade-Anleitungen und Release Notes aller Fremdpakete gelesen, die sich ändern, Breaking-Einträge und neue Upgrade-Wizards im QRH erfasst", "how": "deps list after bump probe, then deps docs"},
+            {"id": "pf.patches", "owner": "pilot", "title": "Composer patches checked against the target versions: apply, fail, already contained, out of range", "title_de": "Composer-Patches gegen die Zielversionen geprüft: passt, scheitert, bereits enthalten, außerhalb des Versionsbereichs", "how": "patches (cweagans or vaimo syntax, git apply --check on the target source)"},
+            {"id": "pf.delivery", "owner": "shared", "title": "Deployment and CI scripts checked: PHP versions, typo3cms binary, CLI commands, platform flags", "title_de": "Deployment- und CI-Skripte geprüft: PHP-Versionen, typo3cms-Binary, CLI-Befehle, Plattform-Flags", "how": "delivery --label preflight"},
             {"id": "pf.php-baseline", "owner": "shared", "title": "PHP baseline supported by both source and target, live in production before departure", "title_de": "PHP-Version, die Quell- und Zielversion unterstützen, vor dem Start in Produktion", "how": "versions shows the PHP overlap, a human confirms production"}
           ]
         },
@@ -132,6 +139,7 @@
             {"id": "fl.dependency-migrations", "owner": "pilot", "title": "Migration steps of the dependencies done: their breaking entries handled, their upgrade wizards run in step 8", "title_de": "Migrationsschritte der Fremdpakete erledigt: Breaking-Einträge bearbeitet, ihre Upgrade-Wizards in Schritt 8 ausgeführt", "how": "deps list --from-lock <pre-flight branch>, then deps docs"},
             {"id": "fl.third-party-gaps", "owner": "shared", "title": "Third-party gaps closed by update, patch, fork or replacement", "title_de": "Lücken bei Fremd-Extensions geschlossen: Update, Patch, Fork oder Ersatz", "how": "composer resolution + scan --all"},
             {"id": "fl.third-party-modifications", "owner": "pilot", "title": "Every modification of a third-party extension verified against its new version: XCLASSes, subclasses, services, listeners, hooks, overrides, patches", "title_de": "Jede Anpassung an Fremd-Extensions gegen deren neue Version geprüft: XCLASSes, Unterklassen, Services, Listener, Hooks, Overrides, Patches", "how": "deps touchpoints --verify after deps docs"},
+            {"id": "fl.patches", "owner": "pilot", "title": "Patches applied on the new versions: failing ones rebased, contained ones removed", "title_de": "Patches auf den neuen Versionen angewendet: scheiternde angepasst, enthaltene entfernt", "how": "composer update output, patches --label flight"},
             {"id": "fl.overrides", "owner": "shared", "title": "Fluid template and FlexForm overrides re-based onto the new originals", "title_de": "Fluid-Template- und FlexForm-Overrides auf die neuen Originale angepasst", "how": "contacts lists overridden template paths"},
             {"id": "fl.new-deprecations", "owner": "pilot", "title": "Target-version deprecations cleaned as they appear", "title_de": "Deprecations der Zielversion bereinigt, sobald sie auftreten", "how": "measure with failOnDeprecation"},
             {"id": "fl.two-kinds", "owner": "pilot", "title": "Errors separated: broken by the upgrade, or broken already", "title_de": "Fehler getrennt: durch das Upgrade verursacht oder schon vorher vorhanden", "how": "compare against the baseline measurement"}
@@ -177,6 +185,7 @@
           "title": "Sweep again, with the new rules",
           "items": [
             {"id": "pst.touchpoints", "owner": "pilot", "title": "Modifications of third-party extensions verified again on the final state", "title_de": "Anpassungen an Fremd-Extensions auf dem Endstand erneut geprüft", "how": "deps touchpoints --verify --label postflight"},
+            {"id": "pst.delivery", "owner": "shared", "title": "Deployment and CI scripts verified against the target instance: commands exist, PHP versions fit", "title_de": "Deployment- und CI-Skripte gegen die Zielinstanz geprüft: Befehle vorhanden, PHP-Versionen passend", "how": "delivery --label postflight"},
             {"id": "pst.scanner", "owner": "pilot", "title": "Extension Scanner re-run, it now warns about the version after this one", "title_de": "Extension Scanner erneut ausgeführt, er warnt jetzt vor der nächsten Version", "how": "scan --label postflight"},
             {"id": "pst.tca", "owner": "pilot", "title": "TCA migrations re-checked on the new core", "title_de": "TCA-Migrationen auf dem neuen Core erneut geprüft", "how": "tca --label postflight"},
             {"id": "pst.deprecation-log", "owner": "shared", "title": "Deprecation log enabled on the new version and read under traffic", "title_de": "Deprecation-Log auf der neuen Version aktiviert und unter Last gelesen", "how": "pilot can crawl locally, real traffic is human"},
@@ -191,6 +200,7 @@
             {"id": "pst.upgrade-packages", "owner": "shared", "title": "Upgrade-only packages removed or moved to an isolated tools install", "title_de": "Nur für das Upgrade benötigte Pakete entfernt oder in eine getrennte Werkzeug-Installation verschoben", "how": "decision recorded"},
             {"id": "pst.markers", "owner": "pilot", "title": "Resolved TODO markers deleted", "title_de": "Erledigte TODO-Markierungen gelöscht", "how": "grep for markers added during the flight"},
             {"id": "pst.constraints", "owner": "pilot", "title": "Constraints re-pinned in own extensions (composer.json, ext_emconf.php)", "title_de": "Abhängigkeiten der eigenen Extensions neu festgelegt (composer.json, ext_emconf.php)", "how": "bump already raised them, verify"},
+            {"id": "pst.blockers", "owner": "shared", "title": "Go-live blockers resolved (release in use and verified), or handed over with what they wait for", "title_de": "Go-Live-Blocker aufgelöst (veröffentlichte Version im Einsatz und geprüft) oder mit dem, worauf sie warten, übergeben", "how": "blockers check, blockers resolve, or handoff"},
             {"id": "pst.ci", "owner": "shared", "title": "CI moved to the new core, rule sets raised to the next target", "title_de": "CI auf den neuen Core umgestellt, Regeln auf das nächste Ziel angehoben", "how": "check CI configuration"}
           ]
         },

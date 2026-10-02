@@ -23,6 +23,9 @@ T = {
                   'final': 'Final report'},
         'upgrade': 'Upgrade {title}',
         'check': 'Update check {title}',
+        'not_releasable': '(not releasable yet: {n} go-live blocker(s), see below)',
+        'blocker_line': '**Go-live blocker: {package}** is used as {use} because {reason}. It must not go live like this. '
+                        'Waits for: {waits}.',
         'alias_risk': '**Temporary workaround**: {name} {to} is installed as version {alias} (inline alias), because the version '
                       'mapping of the package for its development branch does not take effect. Remove it once the package is released or fixed.',
         'status_check': 'Check completed: nothing in the project was changed',
@@ -67,6 +70,9 @@ T = {
                   'postflight': 'Bericht Nachbereitung (Post-Flight)', 'final': 'Abschlussbericht'},
         'upgrade': 'Upgrade {title}',
         'check': 'Prüfung des Updates {title}',
+        'not_releasable': '(noch nicht auslieferbar: {n} Go-Live-Blocker, siehe unten)',
+        'blocker_line': '**Go-Live-Blocker: {package}** wird als {use} eingesetzt, Grund: {reason}. So darf es nicht live gehen. '
+                        'Wartet auf: {waits}.',
         'alias_risk': '**Vorübergehende Hilfslösung**: {name} {to} wird als Version {alias} installiert (Inline-Alias), weil die Versionszuordnung '
                       'des Pakets für seinen Entwicklungszweig nicht greift. Entfernen, sobald das Paket veröffentlicht oder korrigiert ist.',
         'status_check': 'Prüfung abgeschlossen: am Projekt wurde nichts geändert',
@@ -191,6 +197,14 @@ def checking(flight: Flight) -> bool:
 
 
 def status_line(flight: Flight, phase: str, t: dict) -> str:
+    text = base_status(flight, phase, t)
+    live = [b for b in flight.log.get('blockers', []) if b['status'] == 'open']
+    if live and phase in ('flight', 'postflight', 'final'):
+        text += ' ' + t['not_releasable'].format(n=len(live))
+    return text
+
+
+def base_status(flight: Flight, phase: str, t: dict) -> str:
     if checking(flight) and flight.log.get('phase') == 'landed' and phase in ('preflight', 'final'):
         return t['status_check']
     if phase == 'final':
@@ -271,7 +285,11 @@ def pm_report(flight: Flight, phase: str, lang: str) -> str:
     lines.append('')
     team = [(i, states[i['id']]) for i in items if states[i['id']]['status'] == 'handoff']
     lines += [f'## {t["team"]}', '']
-    lines += [f'- **{i.get(title_key) or i["title"]}**' + (f': {s["note"]}' if s.get('note') else '') for i, s in team] or [f'- {t["no_team"]}']
+    team_lines = [f'- **{i.get(title_key) or i["title"]}**' + (f': {s["note"]}' if s.get('note') else '') for i, s in team]
+    team_lines += ['- ' + t['blocker_line'].format(package=b['package'], use=b['use'], reason=b['reason'],
+                                                   waits=b.get('waits_for') or '-')
+                   for b in log.get('blockers', []) if b['status'] == 'open']
+    lines += team_lines or [f'- {t["no_team"]}']
     lines.append('')
 
     lines += [f'## {t["next"]}', '']
@@ -349,6 +367,12 @@ def dev_report(flight: Flight, phase: str) -> str:
                                                 for e in schema] + ['']
     if phase == 'preflight' and log.get('context'):
         lines += ['## Context', ''] + [f'- {c["ref"]} ({c["kind"]}): {c.get("title") or ""} {c.get("digest") or "NOT READ"}' for c in log['context']] + ['']
+    blockers = log.get('blockers', [])
+    if blockers:
+        lines += ['## Go-live blockers', ''] + [f'- {b["status"]} `{b["package"]}` uses {b["use"]}: {b["reason"]}'
+                                                + (f' (waits for {b["waits_for"]})' if b.get('waits_for') else '')
+                                                + (f', {b["status"]} {b.get("closed_at", "")[:10]}: {b.get("note") or ""}' if b['status'] != 'open' else '')
+                                                for b in blockers] + ['']
     issues = log.get('issues', [])
     if issues:
         lines += ['## Issues', ''] + [f'- {i.get("placeholder") or "-"} {i.get("number") or "(open)"} {i["step"]}: {i["title"]}' for i in issues] + ['']

@@ -1,6 +1,6 @@
 ---
 name: instruments
-description: Write the missing tests for a TYPO3 project's or extension's critical core contact points (plugins, controllers, services with core API, hooks, event listeners, middlewares, commands, TCA, TypoScript) before an upgrade, so the new core reports breakage as red tests instead of production incidents. Use during upgrade pre-flight, or whenever `upgrade-pilot contacts` shows gaps.
+description: Write the missing tests for a TYPO3 project's or extension's critical core contact points (plugins, controllers, services with core API, hooks, event listeners, middlewares, commands, TCA, TypoScript) and for the places where it modifies third-party packages (XCLASS, subclasses, listeners, template copies, overrides) before an upgrade, so the new core reports breakage as red tests instead of production incidents. Use during upgrade pre-flight, or whenever `upgrade-pilot contacts` shows gaps.
 argument-hint: "[extension key or gap to cover]"
 ---
 
@@ -42,6 +42,22 @@ Rules:
 - Assert observable behaviour (rendered output, rows written, return values), not internals.
 - Fixtures model production data, including legacy shapes. That is what makes data migrations visible later.
 - A test must pass its assertions on the **source** version. Deprecations it reports are findings, keep them. If it reveals a bug that exists already, do not fix it in the same commit, record it as "broken already" in `MEL.md`.
+
+## 3b. Third-party touchpoints
+
+A project's suite rarely runs third-party code, so it stays green while an update of a package breaks the site. `upgrade-pilot deps touchpoints --coverage` lists every place where own code modifies or uses a third-party package, with the test files that mention it (`tests: NONE mentions it` is a gap). Mentioned is not executed: read the test before counting a touchpoint as covered.
+
+| Touchpoint | Test |
+|---|---|
+| `xclass`, `subclass` | Functional: `GeneralUtility::makeInstance(<package class>::class)` returns the project's class (for an XCLASS), then call every overridden method once with fixture data and assert the result. A changed parent signature becomes a fatal error here, not in production |
+| `listener` | Functional: dispatch the package's event through the real event dispatcher (`$this->get(EventDispatcherInterface::class)`), assert the listener's effect. Better: render the package's plugin, so the package dispatches it itself |
+| `template-copy`, `template-override`, `typoscript` | Functional frontend request that renders the package's plugin with the project's TypoScript, assert markup that only the project's copy produces |
+| `language-override` | Functional: assert the overridden label through `LanguageServiceFactory`, or in the rendered plugin output |
+| `service-override`, `php-usage` | Functional: fetch the service from the container, call the public method with fixture data |
+| `tca-override`, `fixture` | Functional boot plus a CSV fixture of the package's table, as production stores it |
+| `patch` | A test that fails without the patch's change, so a lost patch turns red |
+
+Run `deps touchpoints --coverage` again after writing them and record `untested` in the pre-flight notes.
 
 ## 4. Commit and measure
 

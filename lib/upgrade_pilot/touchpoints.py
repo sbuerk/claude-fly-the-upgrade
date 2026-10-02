@@ -24,7 +24,7 @@ import shlex
 from pathlib import Path
 
 from .contacts import plugin_registrations
-from .core import Flight, die, load_json, now, sh, slug, write_json
+from .core import Flight, die, load_json, now, sh, short_class, slug, write_json
 from .init import locked_packages
 
 TEXT_SUFFIXES = ('.php', '.typoscript', '.tsconfig', '.ts', '.txt', '.html', '.yaml', '.yml', '.xml', '.xlf', '.json', '.csv')
@@ -145,6 +145,12 @@ def scan(info: dict, files: dict[str, list[str]], root: Path) -> list[dict]:
         hits.append({'kind': kind, 'file': rel, 'line': number, 'code': line.strip()[:200], 'detail': detail})
 
     ts_paths = typoscript_paths(files)
+    # Composer patches, read the way the installed patch plugin (cweagans or vaimo) reads them.
+    from .patches import definitions
+    for d in definitions(root):
+        if d['package'] == info['name']:
+            hits.append({'kind': 'patch', 'file': d['origin'], 'line': 1, 'code': f'{d["description"]}: {d["source"]}'[:200],
+                         'detail': d['source'], 'patch': d})
     for rel, lines in files.items():
         suffix = Path(rel).suffix
         text = '\n'.join(lines)
@@ -158,13 +164,6 @@ def scan(info: dict, files: dict[str, list[str]], root: Path) -> list[dict]:
             tail = next((t for t in info['templates'] if rel.endswith('/' + t)), None)
             if tail:
                 hit('template-copy', rel, 1, '', f'copy of Resources/Private/{tail}')
-        if rel == 'composer.json' or rel.endswith('/composer.json'):
-            try:
-                patches = (json.loads(text).get('extra') or {}).get('patches') or {}
-            except ValueError:
-                patches = {}
-            for description, patch in (patches.get(info['name']) or {}).items():
-                hit('patch', rel, 1, f'{description}: {patch}', patch)
         for number, line in enumerate(lines, 1):
             stripped = line.strip()
             if stripped.startswith(('//', '#', '*', '/*')) and suffix == '.php':
@@ -293,6 +292,7 @@ def verify(flight: Flight, info: dict, hits: list[dict], files: dict[str, list[s
     if not result:
         for h in hits:
             h['verify'] = 'not verified: run upgrade-pilot deps docs for this package first'
+            h['status'] = verdict(h['verify'])
         return
     repo, old, new = result['repo'], result.get('old_ref'), result['new_ref']
     for h in sorted(hits, key=lambda x: x['kind'] == 'template-override'):
@@ -369,13 +369,16 @@ def verify(flight: Flight, info: dict, hits: list[dict], files: dict[str, list[s
             gone = [c for c in classes if class_path(info, c) and git_show(repo, new, class_path(info, c)) is None]
             h['verify'] = f'class(es) missing in target: {", ".join(gone)}' if gone else ('referenced classes exist in target' if classes else 'check by hand')
         elif kind == 'patch':
-            patch_file = flight.root / h['detail'] if not re.match(r'^https?://', h['detail']) else None
-            targets = re.findall(r'^\+\+\+ b/(\S+)', patch_file.read_text(errors='replace'), re.M) if patch_file and patch_file.is_file() else []
-            if not targets:
-                h['verify'] = 'check: composer update reports whether the patch still applies'
-                continue
-            changed = [t for t in targets if old and git_show(repo, old, t) != git_show(repo, new, t)]
-            h['verify'] = f'patched file(s) CHANGED in target: {", ".join(changed)}' if changed else 'patched files unchanged in target'
+            from .patches import check
+            result = check(flight, h['patch'])
+            h['verify'] = {'applies': f'patch applies to the target ({result.get("target_version")})',
+                           'not moving': 'package does not move, patch unchanged',
+                           'skipped': 'skipped by its definition',
+                           'contained': 'already CONTAINED in the target: remove the patch',
+                           'fails': f'patch FAILS on the target ({result.get("target_version")}): rebase or drop it',
+                           'out of range': result['detail'],
+                           'retired': f'patch retired by its version constraint, the change is in the target ({result.get("target_version")})',
+                           'missing': result['detail']}.get(result['target'], f'check by hand: {result["detail"] or "patch not checkable"}')
         else:
             h['verify'] = 'review against the changelog of the package'
     for h in hits:
@@ -384,7 +387,8 @@ def verify(flight: Flight, info: dict, hits: list[dict], files: dict[str, list[s
 
 # Verdicts of verify() that need nothing, or a human look. Everything else is a finding.
 VERIFIED = re.compile(r'^(identical to the target original|original unchanged|overridden methods unchanged|copied templates are unchanged'
-                      r'|all overridden keys exist|\d+ ViewHelper\(s\) exist|referenced classes exist|patched files unchanged'
+                      r'|all overridden keys exist|\d+ ViewHelper\(s\) exist|referenced classes exist|patch applies to the target'
+                      r'|package does not move|skipped by its definition|patch retired by its version constraint'
                       r'|no copied templates found)')
 BY_HAND = re.compile(r'^(not verified|check|review|namespace used|present in target|replacement class not found|override file not found)')
 
@@ -396,6 +400,49 @@ def verdict(text: str) -> str:
     if BY_HAND.search(text):
         return 'manual'
     return 'attention'
+
+
+# -- test coverage ---------------------------------------------------------------------------------------
+
+def test_files(flight: Flight) -> dict[str, str]:
+    """Test code and fixtures of the project: Tests/ or tests/ in own extensions and at the root."""
+    bases = [flight.root / ext['path'] for ext in flight.extensions()] + [flight.root]
+    out: dict[str, str] = {}
+    for base in bases:
+        for name in ('Tests', 'tests'):
+            directory = base / name
+            if not directory.is_dir():
+                continue
+            for path in directory.rglob('*'):
+                if path.is_file() and path.suffix in TEXT_SUFFIXES and not set(path.relative_to(flight.root).parts) & SKIP_PARTS:
+                    out.setdefault(str(path.relative_to(flight.root)), path.read_text(encoding='utf-8', errors='replace'))
+    return out
+
+
+def needles(info: dict, hit: dict, files: dict[str, list[str]]) -> set[str]:
+    """Names a test that exercises this touchpoint would mention."""
+    found: set[str] = set()
+    text = '\n'.join(files.get(hit['file'], []))
+    if hit['file'].endswith('.php'):
+        namespace = re.search(r'^namespace\s+([\w\\]+);', text, re.M)
+        for cls in re.findall(r'^(?:final\s+|abstract\s+|readonly\s+)*class\s+(\w+)', text, re.M):
+            found |= {cls, f'{namespace.group(1)}\\{cls}' if namespace else cls}
+    for fqcn in re.findall(r'[A-Z]\w*(?:\\\w+)+', f'{hit.get("code", "")} {hit.get("detail") or ""}'):
+        if in_namespace(fqcn, info['namespaces']):
+            found |= {fqcn.lstrip('\\'), short_class(fqcn)}
+    if hit['kind'] in ('template-copy', 'template-override', 'typoscript', 'site-config', 'language-override', 'viewhelper-usage'):
+        found |= set(info['plugins']) | {info['ts_key']}
+    if hit['kind'] in ('tca-override', 'fixture', 'persistence-mapping'):
+        found |= set(info['tables'])
+    return {n for n in found if len(n) > 3}
+
+
+def coverage(flight: Flight, info: dict, hits: list[dict], files: dict[str, list[str]], tests: dict[str, str]) -> None:
+    """Mark each touchpoint with the test files that mention it. Mentioned is not executed, but unmentioned is surely untested."""
+    for h in hits:
+        names = needles(info, h, files)
+        h['tested_by'] = sorted(path for path, text in tests.items()
+                                if any(re.search(rf'(?<![\w\\]){re.escape(n)}(?!\w)', text) for n in names))[:5]
 
 
 # -- command -------------------------------------------------------------------------------------------
@@ -420,11 +467,14 @@ def cmd_touchpoints(args) -> None:
     files = project_files(flight)
     report = {'at': now(), 'verified': bool(args.verify), 'packages': {}}
     total = 0
+    tests = test_files(flight) if getattr(args, 'coverage', False) else None
     for name in names:
         info = package_info(flight, name, lock)
         hits = scan(info, files, flight.root)
         if args.verify:
             verify(flight, info, hits, files)
+        if tests is not None:
+            coverage(flight, info, hits, files, tests)
         report['packages'][name] = {'info': {k: v for k, v in info.items() if k not in ('templates', 'labels')}, 'touchpoints': hits}
         total += len(hits)
         kinds: dict[str, int] = {}
@@ -436,6 +486,8 @@ def cmd_touchpoints(args) -> None:
             print(f'  {h["kind"]:<19} {where:<60} {h["detail"] or h["code"][:80]}')
             if args.verify:
                 print(f'  {"":<19} -> {h["verify"]}' + ('' if h['status'] == 'ok' else f'  [{h["status"]}]'))
+            if tests is not None:
+                print(f'  {"":<19} tests: ' + (', '.join(h['tested_by']) if h['tested_by'] else 'NONE mentions it'))
     path = flight.dir / 'touchpoints.json'
     write_json(path, report)
     flight.log.setdefault('touchpoints', []).append({'label': args.label, 'verified': bool(args.verify), 'total': total,
@@ -444,10 +496,14 @@ def cmd_touchpoints(args) -> None:
                                                                       if h.get('status') == 'attention'),
                                                      'manual': sum(1 for p in report['packages'].values() for h in p['touchpoints']
                                                                    if h.get('status') == 'manual'),
+                                                     'untested': (sum(1 for p in report['packages'].values() for h in p['touchpoints']
+                                                                      if not h.get('tested_by')) if tests is not None else None),
                                                      **flight.stamp()})
     entry = flight.log['touchpoints'][-1]
     flight.event(f'touchpoints {args.label}: {total} in {len(names)} package(s)' + (' (verified against the target)' if args.verify else ''))
     flight.save()
     if args.verify:
         print(f'\nverified: {total - entry["attention"] - entry["manual"]} ok, {entry["attention"]} need attention, {entry["manual"]} need a human look')
+    if tests is not None:
+        print(f'tests: {total - entry["untested"]} of {total} touchpoint(s) mentioned by a test ({len(tests)} test file(s) read)')
     print(f'\nfull report: {flight.rel(path)}')

@@ -13,6 +13,7 @@ An upgrade is flown, not hoped for. Three phases, each ending in a gate:
 
 | Phase | Skill | Ends with |
 |---|---|---|
+| 0 Pre-analysis: nothing changes yet | `fly-the-upgrade:assess` | decisions, or a hold |
 | 1 Pre-flight: nothing touches the target version | `fly-the-upgrade:preflight` (+ `fly-the-upgrade:instruments`) | Go / No-Go |
 | 2 Flight: the fixed sequence, on the target version | `fly-the-upgrade:flight` | Cleared to hand over |
 | 3 Post-flight: sweep again, remove ferry equipment, debrief | `fly-the-upgrade:postflight` | Debriefed |
@@ -55,6 +56,7 @@ Never edit `flightlog.json` or `FLIGHT-LOG.md` by hand. Use the CLI. Run `upgrad
 3. `upgrade-pilot init --target <major.minor> --runtime <...> --gates <...> --commit-style <...> [--commit-template "..."] [--tracker <name>] [--project-key <KEY>] --issue-mode <none|single|per-step|placeholder> [--issue <REF>] [--php-set] [--context <REF> ...]`
 4. Read what `init` prints. Correct `.upgrade-pilot/config.json` if the runtime, extensions or test commands are wrong (a wrong test command poisons every measurement). Set `"confirmed": true` on a suite once it ran as expected.
 5. Read every context reference before anything else (`upgrade-pilot context list`): issues through whatever this session has (a YouTrack MCP server or skill, `gh issue view`, `glab issue view`), URLs if they are readable, files are copied already. Write a short digest per reference (what it says, what it means for the upgrade) and store it: `upgrade-pilot context add <REF> --title "..." --file <digest.md>`. If a reference cannot be read, tell the user and ask for the content.
+6. Run the pre-analysis with `fly-the-upgrade:assess` before creating any branch. Third-party packages are only planned with released versions: every package without one gets a decision from the user (development version as a go-live blocker, or hold) before the pre-flight continues.
 
 Resuming: `upgrade-pilot status -v`, then continue with the phase skill it names. The first open item of that phase is the next thing to do.
 
@@ -78,6 +80,7 @@ Resuming: `upgrade-pilot status -v`, then continue with the phase skill it names
 - **"No" is a valid answer.** `upgrade-pilot item <id> no --note "<reason>"` is an accepted risk. An open item is a forgotten one.
 - **Tests are not weakened to get green.** Never delete, skip or loosen a test or `failOnDeprecation` to pass a gate. Fixtures that represent data may be migrated the way production data is migrated, and that must be said in the commit.
 - **Do not guess facts.** Versions, PHP ranges and support dates come from `upgrade-pilot versions`. Behaviour changes come from changelog entries (`upgrade-pilot changelog`, `upgrade-pilot deps docs`) or the tool's `@changelog` reference.
+- **Released versions only, unless decided.** A development version of a third-party package is used only after the user decided it, and then as a go-live blocker (`upgrade-pilot blockers add`) until a release is used and verified. An open blocker makes the result not releasable, say so in every summary.
 - **Human-only items are never faked.** Backups of production, freezes, editor smoke tests and staging deployments are `handoff` with a note saying what the human has to do.
 
 ## Reports at every gate, and at the end

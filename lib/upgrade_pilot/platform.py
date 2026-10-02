@@ -8,7 +8,7 @@ import shlex
 import urllib.request
 from pathlib import Path
 
-from .core import Flight, die, git, load_json, now, sh, write_json
+from .core import Flight, die, extract_json, git, load_json, now, sh, write_json
 
 GET_TYPO3 = 'https://get.typo3.org/api/v1/major/{major}'
 PACKAGIST = 'https://repo.packagist.org/p2/{name}.json'
@@ -283,6 +283,54 @@ def require_commands(changes: list[dict]) -> list[str]:
     return commands
 
 
+def composer_audit(flight: Flight, label: str) -> dict:
+    """Security advisories and abandoned packages of the current composer.lock, from composer audit."""
+    # Through the runtime's exec, not its composer wrapper: composer audit exits non-zero when it finds something,
+    # and wrappers such as "ddev composer" drop the output of a failing command.
+    rc, out, _, _ = flight.run_runtime('composer audit --locked --format=json --no-interaction', merge=False)
+    data = extract_json(out)
+    if not isinstance(data, dict):
+        return {'label': label, 'error': f'composer audit gave no JSON (exit {rc})', 'advisories': {}, 'abandoned': {}}
+    advisories = data.get('advisories') or {}
+    if isinstance(advisories, list):  # composer prints [] when there is nothing
+        advisories = {}
+    abandoned = data.get('abandoned') or {}
+    result = {'label': label, 'at': now(), 'advisories': advisories, 'abandoned': abandoned if isinstance(abandoned, dict) else {}}
+    write_json(flight.dir / 'assess' / f'audit-{label}.json', result)
+    return result
+
+
+def probe_update(flight: Flight, update: str, audit: bool) -> tuple[int, str, Path, dict | None]:
+    """Resolve the target graph without installing it. With audit, the target lock is written, audited and restored."""
+    lock = flight.root / 'composer.lock'
+    saved = lock.read_bytes() if lock.is_file() else None
+    flags = ' --no-install --no-audit' if audit else ' --dry-run --no-audit'
+    rc, out, log = flight.run_host(update + flags, log_name='bump-probe')
+    result = None
+    try:
+        if audit and rc == 0:
+            (flight.dir / 'assess').mkdir(parents=True, exist_ok=True)
+            (flight.dir / 'assess' / 'target-composer.lock').write_bytes(lock.read_bytes())
+            result = composer_audit(flight, 'target')
+    finally:
+        if saved is not None:
+            lock.write_bytes(saved)
+    return rc, out, log, result
+
+
+def snapshot_files(root: Path, rels: list[str]) -> dict[str, bytes | None]:
+    """The exact bytes of files before a probe touches them. Restoring these keeps uncommitted work, git checkout would not."""
+    return {rel: ((root / rel).read_bytes() if (root / rel).is_file() else None) for rel in rels}
+
+
+def restore_files(root: Path, saved: dict[str, bytes | None]) -> None:
+    for rel, data in saved.items():
+        if data is None:
+            (root / rel).unlink(missing_ok=True)  # created by the probe, did not exist before
+        else:
+            (root / rel).write_bytes(data)
+
+
 def run_composer(flight: Flight, command: str) -> tuple[int, str]:
     """command starts with "composer": run it through the configured composer of the runtime."""
     rc, out, _ = sh(flight.config['runtime']['composer'] + command[len('composer'):], flight.root)
@@ -342,15 +390,17 @@ def cmd_bump_packages(flight: Flight, args) -> None:
         return
     touched = ['composer.json'] + [f'{ext["path"]}/composer.json' for ext in flight.extensions() if ext['path'] != '.']
     touched = [t for t in touched if (flight.root / t).is_file()]
+    saved = snapshot_files(flight.root, touched)
     for command in commands:
         rc, out = run_composer(flight, command)
         if rc != 0:
-            sh('git checkout -- ' + ' '.join(shlex.quote(t) for t in touched), flight.root)
+            restore_files(flight.root, saved)
             die(f'{command} failed, files restored:\n{out[-2000:]}')
     if args.mode == 'probe':
         composer = flight.config['runtime']['composer']
-        rc, out, log = flight.run_host(composer + update[len('composer'):] + ' --dry-run --no-audit', log_name='bump-probe')
-        sh('git checkout -- ' + ' '.join(shlex.quote(t) for t in touched), flight.root)
+        rc, out, log, audit = probe_update(flight, composer + update[len('composer'):], bool(getattr(args, 'audit', False)))
+        restore_files(flight.root, saved)
+        report_audit(flight, audit)
         verdict = 'resolves' if rc == 0 else 'does NOT resolve'
         flight.log.setdefault('probes', []).append({'target': flight.config['packages']['to'], 'exit': rc, 'log': flight.rel(log),
                                                     'at': now(), 'commands': commands + [update]})
@@ -373,6 +423,15 @@ def cmd_bump_packages(flight: Flight, args) -> None:
     print(f'\napplied and recorded for the commit. Next: upgrade-pilot composer {update[len("composer "):]}')
 
 
+def report_audit(flight: Flight, audit: dict | None) -> None:
+    if not audit:
+        return
+    count = sum(len(v) for v in audit['advisories'].values())
+    flight.log.setdefault('audits', []).append({'label': audit['label'], 'advisories': count,
+                                                'packages': sorted(audit['advisories']), **flight.stamp()})
+    print(f'composer audit of the target graph: {count} advisory(ies) in {len(audit["advisories"])} package(s)')
+
+
 def ignored_aliases(facts: dict, to: str) -> dict[str, str]:
     """Branch aliases declared for another version name than the target: composer does not apply them."""
     out = {}
@@ -385,7 +444,9 @@ def ignored_aliases(facts: dict, to: str) -> dict[str, str]:
 
 def alias_hints(flight: Flight, output: str) -> None:
     """A package of the flight required in a range its development branch does not reach: say why and what helps."""
-    scope = flight.config['packages']
+    scope = flight.config.get('packages')
+    if not scope:
+        return  # core scope: no development targets of its own
     facts = (flight.config.get('facts', {}).get('packages') or {}).get('packages', {})
     ignored = ignored_aliases(facts, scope['to'])
     for required, constraint in sorted(set(re.findall(r'requires (\S+) (\S+) -> found \1\[[^\]]*\] but it does not match the constraint', output))):
@@ -424,17 +485,19 @@ def cmd_bump(args) -> None:
         return
     touched = sorted({f'{c["dir"]}/composer.json'.lstrip('./') if c['dir'] != '.' else 'composer.json' for c in changes}
                      | {flight.rel(p) for p, _, _ in emconf_edits})
+    saved = snapshot_files(flight.root, touched)
     for command in commands:
         rc, out = run_composer(flight, command)
         if rc != 0:
-            sh('git checkout -- ' + ' '.join(shlex.quote(t) for t in touched), flight.root)
+            restore_files(flight.root, saved)
             die(f'{command} failed, files restored:\n{out[-2000:]}')
     for path, _, new in emconf_edits:
         path.write_text(new, encoding='utf-8')
     composer = flight.config['runtime']['composer']
     if args.mode == 'probe':
-        rc, out, log = flight.run_host(f'{composer} update -W --dry-run --no-interaction --no-audit', log_name='bump-probe')
-        sh('git checkout -- ' + ' '.join(shlex.quote(t) for t in touched), flight.root)
+        rc, out, log, audit = probe_update(flight, f'{composer} update -W --no-interaction', bool(getattr(args, 'audit', False)))
+        restore_files(flight.root, saved)
+        report_audit(flight, audit)
         verdict = 'resolves' if rc == 0 else 'does NOT resolve'
         flight.log.setdefault('probes', []).append({'target': target, 'exit': rc, 'log': flight.rel(log), 'at': now(),
                                                     'commands': commands})

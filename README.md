@@ -10,6 +10,7 @@ the measurable work, records every step, and stops where a human has to decide.
 
 | Phase | What the pilot does | Ends with |
 |---|---|---|
+| **0 Pre-analysis** | Before anything changes: **released version for the target of every third-party package** (Packagist, other composer repositories, TER, development branches and their documentation), probe, **security advisories** of the installed and the target graph, **composer patches** (cweagans and vaimo) against the target, **deployment and CI scripts**, modifications of third-party packages and their tests, the size of the work counted, a report for developers and project managers | Decisions: release, development version as **go-live blocker**, or hold |
 | **1 Pre-flight** | Inventory, version facts, bump probe, changelog triage of the core **and of every third-party package that moves**, **tests for untested core contact points**, baseline, deprecations cleared on the *current* version with Rector and Fractor **one rule per commit**, Extension Scanner, TCA migration check, **schema tooling decision (TYPO3 Console)**, QRH / MEL / briefing, backup rehearsal | Go / No-Go |
 | **2 Flight** | Branch, platform check, core and tooling raised in one composer transaction, Rector and Fractor for the *target* one rule per commit, scan again, red tests worked one at a time, **schema previewed and applied until it converges**, upgrade wizards verified on data, caches | Cleared to hand over |
 | **3 Post-flight** | Sweep again with the new core's rules, local deprecation-log crawl, destructive schema changes listed for after the rollback window, ferry equipment removed, constraints re-pinned, upgrade report and debrief | Debriefed |
@@ -37,6 +38,7 @@ log inside the project. Nothing is estimated.
 - [Upgrade a project, step by step](#upgrade-a-project-step-by-step)
 - [What you get: the flight log](#what-you-get-the-flight-log)
 - [Third-party changelogs and upgrade notes](#third-party-changelogs-and-upgrade-notes)
+- [Pre-analysis before anything changes](#pre-analysis-before-anything-changes)
 - [Your modifications of third-party packages](#your-modifications-of-third-party-packages)
 - [Selected packages only: update or check](#selected-packages-only-update-or-check)
 - [Database schema and TYPO3 Console](#database-schema-and-typo3-console)
@@ -125,6 +127,23 @@ update never touches a running flight. What changes for it is listed per
 version below and in [CHANGELOG.md](CHANGELOG.md).
 
 ### Upgrade notes
+
+#### 0.4.x to 0.5.0
+
+- **New checklist lines** appear as open in running flights: `pf.assessment`,
+  `pf.release-status`, `pf.security`, `pf.patches`, `pf.delivery`,
+  `fl.patches`, `pst.delivery`, `pst.blockers`. In a flight that is still in
+  the pre-flight, run `upgrade-pilot assess` once: it answers most of them
+  with evidence. In a flight that is further along, answer them with
+  `upgrade-pilot patches`, `upgrade-pilot delivery --label <phase>` and, for
+  any development version already in use, `upgrade-pilot blockers add`.
+- **Patch touchpoints** are now read through the installed patch plugin
+  (`cweagans/composer-patches` or `vaimo/composer-patches`) and verified with
+  `git apply --check` against the target source, instead of comparing the
+  patched files. A project without one of these plugins has no patch
+  touchpoints.
+- **Reports** show go-live blockers, and the final status says "not
+  releasable" while one is open.
 
 #### 0.3.x to 0.4.0
 
@@ -269,6 +288,15 @@ Every commit goes to local pilot branches, in your style, in small logical
 units. Composer files change only through composer (or `jq`) commands, and the
 commit lists them in a `Used command(s):` block. **Nothing is pushed**: the
 plugin blocks pushes while the flight is open.
+
+### 1b. Pre-analysis (nothing changes yet)
+
+Before any branch, Claude runs `upgrade-pilot assess` and writes the
+assessment reports (see [below](#pre-analysis-before-anything-changes)). For
+every third-party package without a released version for the target you
+decide: use a development version meanwhile as a **go-live blocker**, replace
+or drop it, or **hold** the upgrade. A held upgrade is re-checked later with
+another `assess`.
 
 ### 2. Pre-flight (on a branch, still on the current version)
 
@@ -431,6 +459,47 @@ that their package keeps out of the service container are marked **opt-in**,
 with their class documentation: the core never offers them, the project
 decides.
 
+## Pre-analysis before anything changes
+
+`upgrade-pilot assess` (skill `fly-the-upgrade:assess`) runs right after
+initialization, read-only, and writes `reports/assessment-dev.en.md`,
+`reports/assessment-pm.en.md` and `reports/assessment-pm.de.md`:
+
+- **Release status** of every third-party TYPO3 extension and direct
+  requirement for the target core: `released`, `released-ter` (only the TER
+  has one), `dev-only` (only a development line requires the target),
+  `claimed` (only the documentation of a development line mentions it),
+  `none`. Sources: Packagist, composer itself for other repositories, the TER
+  REST API by extension key, the development branches with their
+  `ext_emconf.php`, README and manual. Abandoned packages and release dates
+  are reported too.
+- **Security**: `composer audit` of the installed lock file and of the target
+  lock file the probe writes without installing, plus abandoned packages.
+- **Composer patches** of `cweagans/composer-patches` (1.x and 2.x) and
+  `vaimo/composer-patches`, read in each plugin's own syntax and checked with
+  `git apply --check` against the target source: applies, fails, already
+  contained upstream, retired by its version constraint, or lost.
+- **Deployment and CI**: PHP versions in CI images and recipes against the
+  target core, `typo3cms` calls (checked against the installed TYPO3
+  Console), `typo3` commands the instance does not know, composer calls that
+  switch platform checks off.
+- **Modifications of third-party packages** and whether a test mentions each
+  of them, the dependencies' and the core's changes that touch your code,
+  upgrade wizards. Counted, never estimated.
+
+**Released versions only, unless you decide otherwise.** A package that only
+has a development version for the target is a decision: use it meanwhile as a
+**go-live blocker** (`upgrade-pilot blockers add`), or hold the upgrade. The
+flight can land with an open blocker, but every report then says "not
+releasable", and `blockers resolve` only succeeds once a release is installed
+and committed, every test suite was green afterwards and the package's
+touchpoints were verified on it.
+
+**Re-check.** Every assessment is kept and compared with the previous one:
+what changed per package, new or resolved advisories, and blockers that can be
+resolved because a release appeared. The whole procedure is in
+[docs/PROCESS.md](docs/PROCESS.md#4-pre-analysis-the-assessment).
+
 ## Your modifications of third-party packages
 
 Sitepackages and local extensions replace classes of third-party extensions,
@@ -441,8 +510,10 @@ from each package's own declarations (namespaces, extension key, tables,
 plugins, templates, labels) in own extensions, sitepackages, `config/` and
 composer patches, and checks each against the target version: XCLASS and
 subclass signatures, final classes, removed classes and events, changed
-original templates, removed label keys, missing ViewHelpers, changed patched
-files. Every entry ends as `ok`, `manual` or `attention`.
+original templates, removed label keys, missing ViewHelpers, patches that no
+longer apply. Every entry ends as `ok`, `manual` or `attention`. With
+`--coverage` it also lists the test files that mention each place, so
+untested modifications become visible.
 
 It runs in the pre-flight (entries become QRH rows), during the flight until
 nothing needs attention, and again on the final state. The kinds and checks are
@@ -506,6 +577,7 @@ run `upgrade-pilot init --target <version>` once (or let Claude do it).
 | Skill | Use it for |
 |---|---|
 | `/fly-the-upgrade:upgrade` | Start, resume, status of a whole upgrade |
+| `/fly-the-upgrade:assess` | Pre-analysis: can we upgrade yet, what blocks it, how big is it. Also the re-check of a held upgrade |
 | `/fly-the-upgrade:preflight` | Only the preparation: what would it take, and clean up on the current version |
 | `/fly-the-upgrade:instruments` | Find untested core contact points and write tests for them |
 | `/fly-the-upgrade:rule-by-rule` | Apply Rector or Fractor in reviewable steps, one rule per commit |
@@ -569,9 +641,13 @@ plugin is enabled). You can use it directly as well:
 | `tca --label` | Headless *Check TCA Migrations* (the core has no CLI for it) |
 | `contacts` | Core contact points and which ones the tests execute |
 | `versions [--target]` | Support dates, PHP range, compatible testing framework and TYPO3 Console |
-| `bump show\|probe\|apply [--alias <name>=<v>]` | Raise core constraints and companion packages (testing framework, TYPO3 Console), or the packages of a packages flight. `probe` dry-runs composer and restores the files |
+| `bump show\|probe\|apply [--alias <name>=<v>] [--audit]` | Raise core constraints and companion packages (testing framework, TYPO3 Console), or the packages of a packages flight. `probe` dry-runs composer and restores the files |
 | `deps list [--from-lock <ref>]` / `deps docs [--package] [--all] [--no-rendered]` | Third-party packages that move, and their changelogs, upgrade notes, release notes, rendered manuals, breaking commits and new wizards |
-| `deps touchpoints [--package] [--verify] --label` | Where own code, configuration and patches use or modify third-party packages, verified against the target |
+| `deps touchpoints [--package] [--verify] [--coverage] --label` | Where own code, configuration and patches use or modify third-party packages, verified against the target, with the tests that mention them |
+| `assess [--quick] [--since <file>] [--render]` | Pre-analysis: release status of third-party packages, probe, composer audit, patches, deployment, sizing, comparison with the previous assessment, reports |
+| `blockers list\|add\|check\|resolve\|drop` | Go-live blockers: development versions used meanwhile, resolved only with evidence |
+| `patches [--package] --label` | Composer patches (cweagans 1.x/2.x, vaimo) and whether they apply to the target versions |
+| `delivery [--verbose] --label` | Deployment and CI files: PHP versions, `typo3cms`, `typo3` commands, platform flags |
 | `schema check\|plan\|apply` | Detect schema tooling, dry run, apply safe changes until converged |
 | `changelog fetch\|match` | Fetch the target's core changelog, match it against own code |
 | `rules config\|plan\|next\|apply\|commit\|skip\|list` | Rector and Fractor campaigns, one rule at a time |
@@ -600,6 +676,10 @@ plugin is enabled). You can use it directly as well:
   contribution guide or your instructions). Without any, the TYPO3 Core format
   is used.
 - Destructive schema changes are never applied by the pilot on its own.
+- Development versions of third-party packages are only used after your
+  decision, and then as go-live blockers until a release is used and verified.
+- The pre-analysis changes nothing: the composer probe restores
+  `composer.json` and the lock file byte for byte.
 - Local database changes (schema, wizards, rehearsal records) only touch the
   local instance. Take a snapshot before and restore it if you want the old
   state back.
@@ -615,6 +695,12 @@ plugin is enabled). You can use it directly as well:
   step is a handoff.
 - The deprecation log under real editor traffic, staging and production are
   outside what an agent on your machine can see.
+- Documentation claims are found by mentions of the target major in a
+  development line's README and manual. Whether a claim means "supported",
+  "planned" or "available elsewhere" is read by Claude and decided by you.
+- A test that mentions a touchpoint is not proof it executes it. Read the test.
+- The deployment check knows common CI and deployment file locations. Scripts
+  elsewhere, and server configuration outside the repository, are not read.
 
 ## Verified on
 
@@ -667,12 +753,41 @@ override, added for the test:
   recorded inline alias. 4 Breaking entries on the minor branch (3 and 1), all
   seven touchpoints `ok`, nothing changed in the project.
 
+The pre-analysis (0.5.0) was verified on a disposable TYPO3 13.4.35 project
+assessed for 14.3, with `georgringer/news`, `fgtclb/academic-persons`,
+`ichhabrecht/content-defender`, `in2code/femanager` and TYPO3 Console 8, a
+sitepackage listening to a news event with a copied news template, three
+composer patches for news, a CI workflow and a Deployer recipe:
+
+- release status as the registries and repositories state it: news
+  (12.3.2 to 14.1.1) and TYPO3 Console (v8.3.1 to v9.0.1) `released`, both
+  outside the current constraint, `academic-persons` and its sibling
+  `academic-base` `dev-only` on `dev-main` (alias `3.0.x-dev`, its
+  `ext_emconf.php` and installation guide name 14.3), femanager `claimed`
+  (its README points to a TYPO3 14 version in an early access program),
+  content-defender `none`
+- the composer probe did not resolve, so each package was read at the version
+  the release check found: 16 Breaking entries and three new wizards (one
+  opt-in) for `academic-persons`
+- patches with `cweagans/composer-patches` 1.7.3: one applies to news 14.1.1,
+  one fails, one is already contained. The same patches with
+  `vaimo/composer-patches` 6.0.3, one from a `patches-search` header with a
+  version constraint: applies, fails, retired
+- deployment and CI: PHP 8.1 outside the 14.3 range, and two `typo3cms` calls
+  that fail already today, since TYPO3 Console 8.3.1 has no `typo3cms` binary
+- decisions recorded as two go-live blockers and a hold for content-defender,
+  `blockers resolve` refused with the failing checks named, a re-check with
+  `assess --quick` in eight seconds
+- the packages scope on the same project (`fgtclb/academic-*` to `dev-main`
+  on 13.4): both packages `dev-only`, since no release newer than 2.3.4
+  exists, and a probe that left an uncommitted `composer.json` edit untouched
+
 ## What is in this repository
 
 | Path | What |
 |---|---|
 | `.claude-plugin/` | Plugin manifest and the marketplace entry |
-| `skills/` | The seven skills |
+| `skills/` | The eight skills |
 | `agents/rule-reviewer.md` | Read-only reviewer for one rule's diff |
 | `hooks/` | The base-branch guard |
 | `bin/upgrade-pilot`, `lib/upgrade_pilot/` | The CLI |
